@@ -48,22 +48,5 @@ services:
       DB_PASSWORD: ${PG_PASSWORD:?error}
       DB_DATABASE: accountdb
 
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin4
-    restart: always
-    depends_on:
-      - postgres
-    env_file:
-      - .env
-    ports:
-      - ${PGADMIN_PORT:-8888}:80
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-user@domain.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?error}
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-
 volumes:
   pgsql_data:
-  pgadmin_data:

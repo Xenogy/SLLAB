@@ -92,13 +92,6 @@ def getGuardCode(shared_secret):
         value = int(value / len(symbols))
     return code
 
-@router.get("/")
-async def get_accounts(limit: int = 10):
-    return "balls"
-
-@router.get("/{username}")
-async def get_username(username: str = "", steamid: str = ""):
-    return [username, steamid]
 
 @router.get("/auth/2fa")
 async def get_auth_code(acc_id: str):
@@ -107,8 +100,8 @@ async def get_auth_code(acc_id: str):
     try:
         cursor.execute("SELECT acc_shared_secret AS secret FROM accounts WHERE acc_id = %s", (acc_id,))
         query = cursor.fetchone()[0]
-    except(err):
-        print(err)
+    except Exception as e:
+        print(e)
         cursor.close()
         return False
 
@@ -118,13 +111,18 @@ async def get_auth_code(acc_id: str):
     return code
 
 @router.post("/info")
-async def get_account_info(acc_id: str, datatype: str):
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT {datatype} AS data FROM accounts WHERE acc_id = %s", (acc_id,))
-    query = cursor.fetchone()[0]
+async def get_account_info(acc_id: str, datatypes: [str]):
+    query = None
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT {','.join(datatypes)} AS data FROM accounts WHERE acc_id = %s", (acc_id,))
+        query = cursor.fetchone()[0]
+    except Exception as e:
+        print(e)
+        
     cursor.close()
 
-    return query
+    return query or False
 
 @router.post("/lock")
 async def lock_account(status: bool, acc_id):
