@@ -1,22 +1,18 @@
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException, Path
 from ..dependencies import get_query_token
 import psycopg2
+from psycopg2 import sql
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import time
 import uuid
+from ..db import conn
 from dotenv import load_dotenv
 import os
 
+# Load environment variables if needed for other settings
 env_path = os.path.join(os.path.dirname(__file__), '/../.env')
 load_dotenv(dotenv_path=env_path)
-
-db_host = os.getenv('PG_HOST')
-db_port = os.getenv('PG_PORT')
-db_user = os.getenv('PG_USER')
-db_pass = os.getenv('PG_PASSWORD')
-time.sleep(5)
-conn = psycopg2.connect(f"host={db_host} port=5432 dbname=accountdb user={db_user} password={db_pass} target_session_attrs=read-write")
 
 class HardwareBase(BaseModel):
     acc_id: str
@@ -48,23 +44,51 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-@router.get("/{acc_id}", response_model=List[HardwareResponse])
-async def get_hardware_by_account(acc_id: str, vm_id: int):
-    """Get hardware information for a specific account"""
-    cursor = conn.cursor()
+def get_hardware(searchType: str, searchValue: str) -> List[Dict[str, Any]]:
+    """
+    Generic function to search hardware by any column
 
+    Args:
+        searchType: The column to search in
+        searchValue: The value to search for
+
+    Returns:
+        List of hardware entries matching the search criteria
+    """
+    ALLOWED_SEARCH_COLUMNS = [
+        "acc_id", "bios_vendor", "bios_version", "disk_serial", "disk_model",
+        "smbios_uuid", "mb_manufacturer", "mb_product", "mb_version", "mb_serial",
+        "mac_address", "vmid", "pcname", "machine_guid", "hwprofile_guid"
+    ]
+
+    # Input validation
+    if searchType not in ALLOWED_SEARCH_COLUMNS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid search type. Allowed types: {', '.join(ALLOWED_SEARCH_COLUMNS)}"
+        )
+
+    cursor = None
     try:
-        cursor.execute("""
+        cursor = conn.cursor()
+
+        # Safely construct SQL using psycopg2.sql
+        query = sql.SQL("""
             SELECT id, acc_id, bios_vendor, bios_version, disk_serial, disk_model,
                    smbios_uuid, mb_manufacturer, mb_product, mb_version, mb_serial,
                    mac_address, vmid, pcname, machine_guid, hwprofile_guid
-            FROM hardware
-            WHERE acc_id = %s
-        """, (acc_id,))
+            FROM {table}
+            WHERE {column} = %s
+        """).format(
+            table=sql.Identifier('hardware'),      # Safely quote table name
+            column=sql.Identifier(searchType)       # Safely quote column name (validated above)
+        )
+
+        # Execute with parameterization
+        print(f"Executing query with {searchType}={searchValue}")
+        cursor.execute(query, (searchValue,))
 
         results = cursor.fetchall()
-        cursor.close()
-
         if not results:
             return []
 
@@ -94,8 +118,30 @@ async def get_hardware_by_account(acc_id: str, vm_id: int):
 
     except Exception as e:
         print(f"Error retrieving hardware: {e}")
-        cursor.close()
-        raise HTTPException(status_code=500, detail="Error retrieving hardware information")
+        raise HTTPException(status_code=500, detail=f"Error retrieving hardware information: {str(e)}")
+    finally:
+        if cursor:
+            cursor.close()
+
+@router.get("/search/mac/{mac_address}", response_model=List[HardwareResponse])
+async def search_by_mac_address(mac_address: str):
+    """Search hardware by MAC address"""
+    return get_hardware('mac_address', mac_address)
+
+@router.get("/search/uuid/{smbios_uuid}", response_model=List[HardwareResponse])
+async def search_by_smbios_uuid(smbios_uuid: str):
+    """Search hardware by SMBIOS UUID"""
+    return get_hardware('smbios_uuid', smbios_uuid)
+
+@router.get("/search/{searchType}/{searchValue}", response_model=List[HardwareResponse])
+async def search_hardware(searchType: str, searchValue: str):
+    """Search hardware by a specific field"""
+    return get_hardware(searchType, searchValue)
+
+@router.get("/{acc_id}", response_model=List[HardwareResponse])
+async def get_hardware_by_account(acc_id: str):
+    """Get hardware information for a specific account"""
+    return get_hardware('acc_id', acc_id)
 
 @router.post("/", response_model=HardwareResponse)
 async def create_hardware(hardware: HardwareCreate):
@@ -241,104 +287,6 @@ async def delete_hardware(hardware_id: int):
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail="Error deleting hardware information")
-
-@router.get("/search/mac/{mac_address}", response_model=List[HardwareResponse])
-async def search_by_mac_address(mac_address: str):
-    """Search hardware by MAC address"""
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute("""
-            SELECT id, acc_id, bios_vendor, bios_version, disk_serial, disk_model,
-                   smbios_uuid, mb_manufacturer, mb_product, mb_version, mb_serial,
-                   mac_address, vmid, pcname, machine_guid, hwprofile_guid
-            FROM hardware
-            WHERE mac_address = %s
-        """, (mac_address,))
-
-        results = cursor.fetchall()
-        cursor.close()
-
-        if not results:
-            return []
-
-        hardware_list = []
-        for row in results:
-            hardware = {
-                "id": row[0],
-                "acc_id": row[1],
-                "bios_vendor": row[2],
-                "bios_version": row[3],
-                "disk_serial": row[4],
-                "disk_model": row[5],
-                "smbios_uuid": row[6],
-                "mb_manufacturer": row[7],
-                "mb_product": row[8],
-                "mb_version": row[9],
-                "mb_serial": row[10],
-                "mac_address": row[11],
-                "vmid": row[12],
-                "pcname": row[13],
-                "machine_guid": row[14],
-                "hwprofile_guid": row[15]
-            }
-            hardware_list.append(hardware)
-
-        return hardware_list
-
-    except Exception as e:
-        print(f"Error searching hardware by MAC: {e}")
-        cursor.close()
-        raise HTTPException(status_code=500, detail="Error searching hardware information")
-
-@router.get("/search/uuid/{smbios_uuid}", response_model=List[HardwareResponse])
-async def search_by_smbios_uuid(smbios_uuid: uuid.UUID):
-    """Search hardware by SMBIOS UUID"""
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute("""
-            SELECT id, acc_id, bios_vendor, bios_version, disk_serial, disk_model,
-                   smbios_uuid, mb_manufacturer, mb_product, mb_version, mb_serial,
-                   mac_address, vmid, pcname, machine_guid, hwprofile_guid
-            FROM hardware
-            WHERE smbios_uuid = %s
-        """, (str(smbios_uuid),))
-
-        results = cursor.fetchall()
-        cursor.close()
-
-        if not results:
-            return []
-
-        hardware_list = []
-        for row in results:
-            hardware = {
-                "id": row[0],
-                "acc_id": row[1],
-                "bios_vendor": row[2],
-                "bios_version": row[3],
-                "disk_serial": row[4],
-                "disk_model": row[5],
-                "smbios_uuid": row[6],
-                "mb_manufacturer": row[7],
-                "mb_product": row[8],
-                "mb_version": row[9],
-                "mb_serial": row[10],
-                "mac_address": row[11],
-                "vmid": row[12],
-                "pcname": row[13],
-                "machine_guid": row[14],
-                "hwprofile_guid": row[15]
-            }
-            hardware_list.append(hardware)
-
-        return hardware_list
-
-    except Exception as e:
-        print(f"Error searching hardware by UUID: {e}")
-        cursor.close()
-        raise HTTPException(status_code=500, detail="Error searching hardware information")
 
 @router.post("/bulk", response_model=List[HardwareResponse])
 async def create_hardware_bulk(hardware_list: List[HardwareCreate]):

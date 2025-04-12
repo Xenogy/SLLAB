@@ -60,8 +60,8 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-@router.get("/{acc_id}", response_model=AccountResponse)
-async def get_account(acc_id: str):
+@router.get("/{acc_username}", response_model=AccountResponse)
+async def get_account(acc_username: str):
     """Get basic account information"""
     cursor = conn.cursor()
 
@@ -76,7 +76,7 @@ async def get_account(acc_id: str):
                 perm_lock
             FROM accounts
             WHERE acc_id = %s
-        """, (acc_id,))
+        """, (acc_username,))
 
         result = cursor.fetchone()
         if not result:

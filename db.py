@@ -13,9 +13,6 @@ db_port = os.getenv('PG_PORT')
 db_user = os.getenv('PG_USER')
 db_pass = os.getenv('PG_PASSWORD')
 
-# Wait for database to be ready
-time.sleep(5)
-
 # Create a connection to the database
 def get_connection():
     return psycopg2.connect(
