@@ -1,0 +1,33 @@
+# Git files
+.git
+.gitignore
+
+# Node modules (will be installed within the container)
+node_modules
+
+# Next.js build output (will be generated within the container)
+.next
+
+# Local environment variables
+.env
+.env.local
+.env.*.local
+
+# Docker files
+Dockerfile
+.dockerignore
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor/OS files
+.DS_Store
+*.suo
+*.user
+*.user.*
+*.log
+*.cache
+*.diff
+*.err
