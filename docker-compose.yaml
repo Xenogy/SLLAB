@@ -23,6 +23,8 @@ services:
       - ${API_PORT}:80
     depends_on:
       - postgres
+    volumes:
+      - ./backend:/app
 
   postgres:
     image: postgres

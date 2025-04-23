@@ -89,26 +89,26 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null)
     setPreviewData(null)
-    
+
     if (e.target.files && e.target.files.length > 0) {
       const selectedFile = e.target.files[0]
-      
+
       // Check file type
       if (importType === "csv" && !selectedFile.name.endsWith(".csv")) {
         setError("Please select a CSV file")
         return
       }
-      
+
       if (importType === "json" && !selectedFile.name.endsWith(".json")) {
         setError("Please select a JSON file")
         return
       }
-      
+
       setFile(selectedFile)
-      
+
       // Preview the file
       const reader = new FileReader()
-      
+
       reader.onload = (event) => {
         try {
           if (importType === "json") {
@@ -119,21 +119,21 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
             const csvData = event.target?.result as string
             const lines = csvData.split("\n")
             const headers = lines[0].split(",").map(h => h.trim())
-            
+
             const previewRows = []
             for (let i = 1; i < Math.min(lines.length, 4); i++) {
               if (lines[i].trim()) {
                 const values = lines[i].split(",").map(v => v.trim())
                 const row: Record<string, string> = {}
-                
+
                 headers.forEach((header, index) => {
                   row[header] = values[index] || ""
                 })
-                
+
                 previewRows.push(row)
               }
             }
-            
+
             setPreviewData(previewRows)
           }
         } catch (err) {
@@ -141,11 +141,11 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
           setError(`Error parsing file: ${err instanceof Error ? err.message : String(err)}`)
         }
       }
-      
+
       reader.onerror = () => {
         setError("Error reading file")
       }
-      
+
       if (importType === "json") {
         reader.readAsText(selectedFile)
       } else {
@@ -158,17 +158,17 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
     const lines = csvText.split("\n")
     const headers = lines[0].split(",").map(h => h.trim())
     const accounts: AccountData[] = []
-    
+
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue
-      
+
       const values = lines[i].split(",").map(v => v.trim())
       const row: Record<string, string> = {}
-      
+
       headers.forEach((header, index) => {
         row[header] = values[index] || ""
       })
-      
+
       // Map CSV fields to the expected API format
       const account: AccountData = {
         id: row.acc_id || `import-${Date.now()}-${i}`,
@@ -186,7 +186,7 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
           guard: "email", // Default value
         }
       }
-      
+
       // Add email if available
       if (row.acc_email_address) {
         account.email = {
@@ -194,7 +194,7 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
           password: row.acc_email_password || "",
         }
       }
-      
+
       // Add steamguard if available
       if (row.acc_steamguard_account_name) {
         account.steamguard = {
@@ -212,10 +212,10 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
           confirm_type: parseInt(row.acc_confirm_type) || 0,
         }
       }
-      
+
       accounts.push(account)
     }
-    
+
     return accounts
   }
 
@@ -224,70 +224,64 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
       setError("Please select a file to import")
       return
     }
-    
+
     setIsLoading(true)
     setProgress(10)
     setError(null)
-    
+
     try {
-      const reader = new FileReader()
-      
-      reader.onload = async (event) => {
-        try {
-          let accounts: AccountData[] = []
-          
-          if (importType === "json") {
-            const jsonData = JSON.parse(event.target?.result as string)
-            accounts = Array.isArray(jsonData) ? jsonData : [jsonData]
-          } else {
-            // Parse CSV
-            accounts = parseCSV(event.target?.result as string)
-          }
-          
-          setProgress(50)
-          
-          if (accounts.length === 0) {
-            throw new Error("No valid accounts found in the file")
-          }
-          
-          // Send to API
-          const response = await accountsAPI.createAccounts(accounts)
-          
-          setProgress(100)
-          
-          toast({
-            title: "Import successful",
-            description: `Successfully imported ${accounts.length} accounts`,
-          })
-          
-          // Refresh the accounts list
-          onSuccess()
-          
-          // Close the modal
-          setTimeout(() => {
-            handleClose()
-          }, 1000)
-        } catch (err) {
-          console.error("Error importing accounts:", err)
-          setError(`Error importing accounts: ${err instanceof Error ? err.message : String(err)}`)
-          setProgress(0)
-        } finally {
-          setIsLoading(false)
-        }
+      let response;
+
+      // Use the new upload endpoints
+      if (importType === "json") {
+        setProgress(30)
+        response = await accountsAPI.uploadJSON(file)
+      } else {
+        setProgress(30)
+        response = await accountsAPI.uploadCSV(file)
       }
-      
-      reader.onerror = () => {
-        setError("Error reading file")
-        setIsLoading(false)
-        setProgress(0)
+
+      setProgress(100)
+
+      // Check if there were any failed accounts
+      if (response.failed_count > 0) {
+        // Show a warning toast but don't treat it as an error
+        toast({
+          title: "Partial import successful",
+          description: `Successfully imported ${response.successful_count} accounts. ${response.failed_count} accounts failed validation.`,
+          variant: "warning",
+        })
+
+        // Show detailed error information in the modal
+        setError(`${response.failed_count} accounts failed validation. See details below.`)
+
+        // Create a preview of the failed accounts
+        const failedAccountsPreview = response.failed_accounts.map(failure => ({
+          account_id: failure.account_id || `Row ${failure.row_number}`,
+          errors: failure.errors.map(err => `${err.loc.join('.')}: ${err.msg}`)
+        }))
+
+        setPreviewData(failedAccountsPreview)
+      } else {
+        toast({
+          title: "Import successful",
+          description: `Successfully imported ${response.successful_count} accounts`,
+        })
+
+        // Refresh the accounts list
+        onSuccess()
+
+        // Close the modal
+        setTimeout(() => {
+          handleClose()
+        }, 1000)
       }
-      
-      reader.readAsText(file)
     } catch (err) {
       console.error("Error importing accounts:", err)
       setError(`Error importing accounts: ${err instanceof Error ? err.message : String(err)}`)
-      setIsLoading(false)
       setProgress(0)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -301,13 +295,13 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
             Import accounts from a CSV or JSON file. The file should contain the required account information.
           </DialogDescription>
         </DialogHeader>
-        
+
         <Tabs defaultValue="csv" className="w-full" onValueChange={(value) => setImportType(value as "csv" | "json")}>
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="csv">CSV File</TabsTrigger>
             <TabsTrigger value="json">JSON File</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="csv" className="space-y-4 pt-4 w-full">
             <div className="space-y-2 w-full">
               <Label htmlFor="csvFile">Upload CSV File</Label>
@@ -321,11 +315,11 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                CSV file should have headers matching the required fields.
+                CSV file should have headers using dot notation for nested fields (e.g., user.username, email.address, metadata.createdAt).
               </p>
             </div>
           </TabsContent>
-          
+
           <TabsContent value="json" className="space-y-4 pt-4 w-full">
             <div className="space-y-2 w-full">
               <Label htmlFor="jsonFile">Upload JSON File</Label>
@@ -344,7 +338,7 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
             </div>
           </TabsContent>
         </Tabs>
-        
+
         {error && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
@@ -352,7 +346,7 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        
+
         {file && !error && (
           <div className="space-y-2 w-full">
             <div className="flex items-center space-x-2">
@@ -361,7 +355,7 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
                 {file.name} ({(file.size / 1024).toFixed(2)} KB)
               </span>
             </div>
-            
+
             {previewData && previewData.length > 0 && (
           <div className="space-y-2 w-full">
                 <Label>Preview</Label>
@@ -373,7 +367,7 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
                     </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {importType === "json" 
+                  {importType === "json"
                     ? `Showing ${previewData.length} of ${Array.isArray(JSON.parse(JSON.stringify(previewData))) ? JSON.parse(JSON.stringify(previewData)).length : 1} accounts`
                     : `Showing ${previewData.length} of ${file ? "multiple" : 0} accounts`}
                 </p>
@@ -381,7 +375,7 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
             )}
           </div>
         )}
-        
+
         {isLoading && (
           <div className="space-y-2">
             <Label>Import Progress</Label>
@@ -391,7 +385,7 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
             </p>
           </div>
         )}
-        
+
         <DialogFooter className="mt-6 flex justify-end gap-2">
           <Button variant="outline" onClick={handleClose} disabled={isLoading}>
             Cancel

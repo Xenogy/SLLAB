@@ -25,7 +25,7 @@ export async function fetchAPI<T>(endpoint: string, options: RequestOptions = {}
   }
 
   // Add auth token to all requests
-  const token = getAuthToken()
+  const token = "CHANGEME" //getAuthToken()
   if (token) {
     // Use Bearer token for authorization
     requestHeaders.Authorization = `Bearer ${token}`
@@ -35,7 +35,8 @@ export async function fetchAPI<T>(endpoint: string, options: RequestOptions = {}
         endpoint.startsWith('/cards') ||
         endpoint.startsWith('/hardware') ||
         endpoint.startsWith('/steam') ||
-        endpoint.startsWith('/account-status')) {
+        endpoint.startsWith('/account-status') ||
+        endpoint.startsWith('/upload')) {
       params.token = token
     }
   }
@@ -114,11 +115,72 @@ export const authAPI = {
     fetchAPI<{ signups_enabled: boolean }>(`/auth/signup-status`),
 }
 
+// Types for account list API
+export interface AccountListParams {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
+  filter_prime?: boolean;
+  filter_lock?: boolean;
+  filter_perm_lock?: boolean;
+}
+
+export interface AccountResponse {
+  acc_id: string;
+  acc_username: string;
+  acc_email_address: string;
+  prime: boolean;
+  lock: boolean;
+  perm_lock: boolean;
+  acc_created_at: number;
+}
+
+export interface AccountListResponse {
+  accounts: AccountResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// Upload response types
+export interface ValidationErrorDetail {
+  loc: string[];
+  msg: string;
+  type: string;
+}
+
+export interface AccountValidationError {
+  account_id?: string;
+  row_number?: number;
+  errors: ValidationErrorDetail[];
+}
+
+export interface UploadResponse {
+  status: string;
+  message: string;
+  total_processed: number;
+  successful_count: number;
+  failed_count: number;
+  successful_accounts: string[];
+  failed_accounts: AccountValidationError[];
+}
+
 // API endpoints for accounts
 export const accountsAPI = {
-  // Get all accounts
-  getAccounts: (): Promise<any[]> =>
-    fetchAPI<any[]>(`/accounts`),
+  // Get accounts with pagination, sorting, and filtering (GET method)
+  getAccounts: (params: AccountListParams = {}): Promise<AccountListResponse> =>
+    fetchAPI<AccountListResponse>(`/accounts/list`, {
+      params: params as Record<string, string | number | boolean>,
+    }),
+
+  // Get accounts with pagination, sorting, and filtering (POST method)
+  getAccountsPost: (params: AccountListParams = {}): Promise<AccountListResponse> =>
+    fetchAPI<AccountListResponse>(`/accounts/list`, {
+      method: "POST",
+      body: params,
+    }),
 
   // Get account by ID
   getAccount: (id: string): Promise<any> =>
@@ -143,6 +205,34 @@ export const accountsAPI = {
     fetchAPI<void>(`/accounts/${id}`, {
       method: "DELETE",
     }),
+
+  // Upload accounts from CSV file
+  uploadCSV: (file: File): Promise<UploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return fetch(`${API_CONFIG.baseUrl}/upload/csv?token=${"CHANGEME"}`, {
+      method: "POST",
+      body: formData,
+    }).then(res => {
+      if (!res.ok) throw new Error("Failed to upload CSV file");
+      return res.json();
+    });
+  },
+
+  // Upload accounts from JSON file
+  uploadJSON: (file: File): Promise<UploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return fetch(`${API_CONFIG.baseUrl}/upload/json?token=${"CHANGEME"}`, {
+      method: "POST",
+      body: formData,
+    }).then(res => {
+      if (!res.ok) throw new Error("Failed to upload JSON file");
+      return res.json();
+    });
+  },
 }
 
 // API endpoints for hardware

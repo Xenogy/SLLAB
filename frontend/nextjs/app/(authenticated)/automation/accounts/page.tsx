@@ -9,6 +9,7 @@ import { DataTable } from "@/components/data-table"
 import { columns, type Account } from "./columns"
 import { useToast } from "@/components/ui/use-toast"
 import { ImportAccountsModal } from "@/components/import-accounts-modal"
+import { accountsAPI } from "@/lib/api"
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -16,82 +17,103 @@ export default function AccountsPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const { toast } = useToast()
 
-  // This is a mock function since the API doesn't have a "get all accounts" endpoint
-  // In a real implementation, you would need to implement this on your backend
+  // Mock data for fallback when API fails
+  const getMockAccounts = (): Account[] => [
+    {
+      acc_id: "1",
+      acc_username: "steamuser1",
+      acc_email_address: "user1@example.com",
+      prime: true,
+      lock: false,
+      perm_lock: false,
+      status: "active",
+      type: "prime",
+      lastLogin: new Date(Date.now() - 86400000).toISOString(),
+      createdAt: new Date(Date.now() - 2592000000).toISOString(),
+    },
+    {
+      acc_id: "2",
+      acc_username: "steamuser2",
+      acc_email_address: "user2@example.com",
+      prime: false,
+      lock: true,
+      perm_lock: false,
+      status: "inactive",
+      type: "trade",
+      lastLogin: new Date(Date.now() - 172800000).toISOString(),
+      createdAt: new Date(Date.now() - 5184000000).toISOString(),
+    },
+    {
+      acc_id: "3",
+      acc_username: "steamuser3",
+      acc_email_address: "user3@example.com",
+      prime: false,
+      lock: false,
+      perm_lock: false,
+      status: "active",
+      type: "marketplace",
+      lastLogin: new Date(Date.now() - 259200000).toISOString(),
+      createdAt: new Date(Date.now() - 7776000000).toISOString(),
+    },
+    {
+      acc_id: "4",
+      acc_username: "steamuser4",
+      acc_email_address: "user4@example.com",
+      prime: true,
+      lock: false,
+      perm_lock: true,
+      status: "banned",
+      type: "prime",
+      lastLogin: new Date(Date.now() - 345600000).toISOString(),
+      createdAt: new Date(Date.now() - 10368000000).toISOString(),
+    },
+    {
+      acc_id: "5",
+      acc_username: "steamuser5",
+      acc_email_address: "user5@example.com",
+      prime: false,
+      lock: false,
+      perm_lock: false,
+      status: "active",
+      type: "trade",
+      lastLogin: new Date(Date.now() - 432000000).toISOString(),
+      createdAt: new Date(Date.now() - 12960000000).toISOString(),
+    },
+  ];
+
+  // Fetch accounts from the API
   const fetchAccounts = async () => {
     setLoading(true)
     try {
-      // Mock data - in a real implementation, you would call your API
-      const mockAccounts: Account[] = [
-        {
-          acc_id: "1",
-          acc_username: "steamuser1",
-          acc_email_address: "user1@example.com",
-          prime: true,
-          lock: false,
-          perm_lock: false,
-          status: "active",
-          type: "prime",
-          lastLogin: new Date(Date.now() - 86400000).toISOString(),
-          createdAt: new Date(Date.now() - 2592000000).toISOString(),
-        },
-        {
-          acc_id: "2",
-          acc_username: "steamuser2",
-          acc_email_address: "user2@example.com",
-          prime: false,
-          lock: true,
-          perm_lock: false,
-          status: "inactive",
-          type: "trade",
-          lastLogin: new Date(Date.now() - 172800000).toISOString(),
-          createdAt: new Date(Date.now() - 5184000000).toISOString(),
-        },
-        {
-          acc_id: "3",
-          acc_username: "steamuser3",
-          acc_email_address: "user3@example.com",
-          prime: false,
-          lock: false,
-          perm_lock: false,
-          status: "active",
-          type: "marketplace",
-          lastLogin: new Date(Date.now() - 259200000).toISOString(),
-          createdAt: new Date(Date.now() - 7776000000).toISOString(),
-        },
-        {
-          acc_id: "4",
-          acc_username: "steamuser4",
-          acc_email_address: "user4@example.com",
-          prime: true,
-          lock: false,
-          perm_lock: true,
-          status: "banned",
-          type: "prime",
-          lastLogin: new Date(Date.now() - 345600000).toISOString(),
-          createdAt: new Date(Date.now() - 10368000000).toISOString(),
-        },
-        {
-          acc_id: "5",
-          acc_username: "steamuser5",
-          acc_email_address: "user5@example.com",
-          prime: false,
-          lock: false,
-          perm_lock: false,
-          status: "active",
-          type: "trade",
-          lastLogin: new Date(Date.now() - 432000000).toISOString(),
-          createdAt: new Date(Date.now() - 12960000000).toISOString(),
-        },
-      ]
+      // Call the API to get accounts
+      const apiAccounts = await accountsAPI.getAccountsPost()
 
-      setAccounts(mockAccounts)
+      // Map the API response to the Account type
+      const formattedAccounts: Account[] = apiAccounts.accounts.map(account => ({
+        acc_id: account.acc_id || '',
+        acc_username: account.acc_username || '',
+        acc_email_address: account.acc_email_address || '',
+        prime: account.prime || false,
+        lock: account.lock || false,
+        perm_lock: account.perm_lock || false,
+        status: (account.lock ? 'inactive' : 'active'),
+        type: (account.prime ? 'prime' : undefined),
+        lastLogin: undefined,
+        createdAt: account.acc_created_at.toString() || undefined,
+      }))
+
+      setAccounts(formattedAccounts)
     } catch (error) {
       console.error("Failed to fetch accounts:", error)
+
+      // Fall back to mock data
+      const mockAccounts = getMockAccounts();
+      setAccounts(mockAccounts)
+
       toast({
-        title: "Error",
-        description: "Failed to fetch accounts. Please try again.",
-        variant: "destructive",
+        title: "Using Demo Data",
+        description: "Could not connect to the API server. Using demo data instead.",
+        variant: "warning",
       })
     } finally {
       setLoading(false)
@@ -284,7 +306,7 @@ export default function AccountsPage() {
           </Card>
         </TabsContent>
       </Tabs>
-      
+
       <ImportAccountsModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # Use absolute imports instead of relative imports
 from dependencies import get_query_token, get_token_header
-from routers import accounts, cards, hardware, steam_auth, account_status, auth
+from routers import accounts, cards, hardware, steam_auth, account_status, auth, upload
 
 app = FastAPI(
     title="Account Management API",
@@ -33,6 +33,7 @@ app.include_router(cards.router)
 app.include_router(hardware.router)
 app.include_router(steam_auth.router)
 app.include_router(account_status.router)
+app.include_router(upload.router)
 
 @app.get("/")
 async def root():
