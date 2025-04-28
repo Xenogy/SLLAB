@@ -47,5 +47,8 @@ ALTER TABLE IF EXISTS public.hardware
     OWNER to ps_user;
 
 GRANT ALL ON TABLE public.hardware TO acc_user;
-
 GRANT ALL ON TABLE public.hardware TO ps_user;
+
+-- Grant sequence permissions
+GRANT USAGE, SELECT ON SEQUENCE hardware_id_seq TO acc_user;
+GRANT USAGE, SELECT ON SEQUENCE hardware_id_seq TO ps_user;

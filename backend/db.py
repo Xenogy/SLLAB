@@ -1,29 +1,46 @@
-import psycopg2
-import time
-from dotenv import load_dotenv
-import os
+"""
+Database module for the AccountDB application.
 
-# Load environment variables
-env_path = os.path.join(os.path.dirname(__file__), '.env')
-load_dotenv(dotenv_path=env_path)
+This module provides functions for managing database connections, including
+connection pooling, connection creation, and connection closing.
 
-# Database connection parameters
-db_host = os.getenv('PG_HOST', 'localhost')
-db_port = os.getenv('PG_PORT', '5432')
-db_user = os.getenv('PG_USER', 'postgres')
-db_pass = os.getenv('PG_PASSWORD', 'postgres')
+IMPORTANT: This module is deprecated and will be removed in a future version.
+Use the new db.connection and db.user_connection modules instead.
+"""
 
-# Create a connection to the database
-def get_connection():
-    try:
-        return psycopg2.connect(
-            f"host={db_host} port={db_port} dbname=accountdb user={db_user} password={db_pass} target_session_attrs=read-write"
-        )
-    except Exception as e:
-        print(f"Error connecting to database: {e}")
-        # Return a mock connection for development/testing
-        print("Using mock database connection for development/testing")
-        return None
+import logging
+import warnings
+from contextlib import contextmanager
 
-# Global connection that can be imported and used by routers
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Import the new connection management modules
+from .db.connection import (
+    get_connection, return_connection, get_db_connection,
+    get_connection_with_retries, get_db_connection_with_retries,
+    get_pool_stats, close_all_connections
+)
+
+from .db.user_connection import (
+    get_user_db_connection, get_user_db_connection_with_retries,
+    get_user_connection_info
+)
+
+# Show deprecation warning
+warnings.warn(
+    "The db module is deprecated and will be removed in a future version. "
+    "Use the new db.connection and db.user_connection modules instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
+# Legacy global connection for backward compatibility
+# This should be replaced with the context managers in all routers
 conn = get_connection()
+
+# Log a warning about the global connection
+logger.warning(
+    "Using the global database connection is deprecated and will be removed in a future version. "
+    "Use the get_db_connection() or get_user_db_connection() context managers instead."
+)

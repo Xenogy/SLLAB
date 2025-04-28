@@ -2,17 +2,21 @@ ARG PYTHON_VERSION=3.12
 FROM python:${PYTHON_VERSION}-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1
-
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/backend
 
 WORKDIR /app
 
-COPY . .
-
+# Copy only what's needed for installing dependencies first
+COPY requirements.txt .
 COPY wait-for-it.sh /wait-for-it.sh
 RUN chmod +x /wait-for-it.sh
 
+# Install dependencies with cache
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
+
+# Create non-root user
 ARG UID=10001
 RUN adduser \
     --disabled-password \
@@ -23,13 +27,15 @@ RUN adduser \
     --uid "${UID}" \
     appuser
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=bind,source=requirements.txt,target=requirements.txt \
-    python -m pip install -r requirements.txt
+# Now copy application code
+COPY . .
 
-RUN mkdir logs
-RUN chown -R appuser:appuser logs
+# Create and set permissions for logs directory
+RUN mkdir -p logs && \
+    chmod 777 logs && \
+    chown -R appuser:appuser logs
 
+# Switch to non-root user
 USER appuser
 
 EXPOSE 80

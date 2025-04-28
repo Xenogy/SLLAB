@@ -33,3 +33,7 @@ GRANT ALL(code1) ON public.cards TO acc_user;
 GRANT ALL(code2) ON public.cards TO acc_user;
 GRANT ALL(redeemed) ON public.cards TO acc_user;
 GRANT ALL(failed) ON public.cards TO acc_user;
+
+-- Grant sequence permissions
+GRANT USAGE, SELECT ON SEQUENCE cards_id_seq TO acc_user;
+GRANT USAGE, SELECT ON SEQUENCE cards_id_seq TO ps_user;

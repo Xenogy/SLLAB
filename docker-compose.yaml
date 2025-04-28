@@ -2,6 +2,7 @@ services:
   frontend:
     build:
       context: ./frontend/.
+      dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     ports:
@@ -16,7 +17,8 @@ services:
 
   api:
     build:
-      context: ./backend/.
+      context: ./backend
+      dockerfile: Dockerfile
     env_file:
       - .env
     ports:
@@ -25,6 +27,7 @@ services:
       - postgres
     volumes:
       - ./backend:/app
+      - api_logs:/app/logs
 
   postgres:
     image: postgres
@@ -36,8 +39,8 @@ services:
       - ${PG_PORT:-5432}:5432
     environment:
       POSTGRES_DB: accountdb
-      POSTGRES_USER: ${PG_USER:-db_user}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:?error}
+      POSTGRES_USER: ${SU_USER:?error}
+      POSTGRES_PASSWORD: ${SU_PASSWORD:?error}
     volumes:
       - pgsql_data:/var/lib/postgresql/data
       - ./inits:/docker-entrypoint-initdb.d
@@ -52,9 +55,10 @@ services:
       DB_TYPE: postgres
       DB_HOST: postgres
       DB_PORT: "5432"
-      DB_USER: ${PG_USER:-db_user}
+      DB_USER: ${PG_USER:-acc_user}
       DB_PASSWORD: ${PG_PASSWORD:?error}
       DB_DATABASE: accountdb
 
 volumes:
   pgsql_data:
+  api_logs:

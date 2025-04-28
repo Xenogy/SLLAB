@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Admin can see all accounts",
+    "expected_count": 3,
+    "actual_count": 3,
+    "result": "PASS"
+  },
+  {
+    "name": "User 2 can only see their own accounts",
+    "expected_count": 1,
+    "actual_count": 1,
+    "result": "PASS"
+  },
+  {
+    "name": "User 3 can only see their own accounts",
+    "expected_count": 1,
+    "actual_count": 1,
+    "result": "PASS"
+  },
+  {
+    "name": "Admin can see specific account owned by user 2",
+    "expected_count": 1,
+    "actual_count": 1,
+    "result": "PASS"
+  },
+  {
+    "name": "User 2 cannot see account owned by user 3",
+    "expected_count": 0,
+    "actual_count": 0,
+    "result": "PASS"
+  },
+  {
+    "name": "User 3 cannot see account owned by user 2",
+    "expected_count": 0,
+    "actual_count": 0,
+    "result": "PASS"
+  }
+]

@@ -4,7 +4,7 @@ import type React from "react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Bot, Server, Activity, BarChart, RefreshCw, Home, Settings } from "lucide-react"
+import { Bot, Server, Activity, BarChart, RefreshCw, Home, Settings, Database } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
@@ -119,6 +119,17 @@ export default function Sidebar({ className }: SidebarProps) {
               <Link href="/vms">
                 <Server className="mr-2 h-4 w-4" />
                 VM Management
+              </Link>
+            </Button>
+            <Button
+              variant={pathname === "/proxmox-nodes" ? "secondary" : "ghost"}
+              size="sm"
+              className="w-full justify-start"
+              asChild
+            >
+              <Link href="/proxmox-nodes">
+                <Database className="mr-2 h-4 w-4" />
+                Proxmox Nodes
               </Link>
             </Button>
             <Button

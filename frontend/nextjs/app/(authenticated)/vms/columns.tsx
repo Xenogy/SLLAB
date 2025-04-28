@@ -3,7 +3,8 @@
 import type { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MoreHorizontal, Edit, Trash, Play, Pause, RefreshCw, Terminal } from "lucide-react"
+import { MoreHorizontal, Edit, Trash, Play, Pause, RefreshCw, Terminal, Server, Star } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,17 +14,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-export type VM = {
-  id: string
-  name: string
-  status: "running" | "stopped" | "error"
-  ip: string
-  cpu: string
-  memory: string
-  uptime: string
+// Import the VM type from the page component
+import { VMTableData } from "./page"
+
+// Define the props for the columns
+export type VMColumnsProps = {
+  updateVMWhitelist: (vmId: string, checked: boolean) => void;
 }
 
-export const columns: ColumnDef<VM>[] = [
+// Define the columns
+const columnsDefinition = ({ updateVMWhitelist }: VMColumnsProps): ColumnDef<VMTableData>[] => [
   {
     accessorKey: "name",
     header: "Name",
@@ -56,6 +56,51 @@ export const columns: ColumnDef<VM>[] = [
   {
     accessorKey: "uptime",
     header: "Uptime",
+  },
+  {
+    accessorKey: "proxmox_node",
+    header: "Proxmox Node",
+    cell: ({ row }) => {
+      const node = row.getValue("proxmox_node") as string | undefined
+      const source = row.original.source
+
+      if (!node) return <span className="text-muted-foreground">N/A</span>
+
+      return (
+        <div className="flex items-center">
+          <Server className="mr-2 h-4 w-4 text-muted-foreground" />
+          <span>{node}</span>
+          {source === 'proxmox' && (
+            <Badge variant="outline" className="ml-2 text-xs">
+              Live
+            </Badge>
+          )}
+        </div>
+      )
+    },
+  },
+  {
+    accessorKey: "whitelist",
+    header: "Whitelist",
+    cell: ({ row }) => {
+      const whitelist = row.getValue("whitelist") as boolean || false
+      const vm = row.original
+
+      return (
+        <div className="flex items-center">
+          {whitelist ? (
+            <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+          ) : (
+            <Star className="h-4 w-4 text-muted-foreground" />
+          )}
+          <Switch
+            checked={whitelist}
+            className="ml-2"
+            onCheckedChange={(checked) => updateVMWhitelist(vm.id, checked)}
+          />
+        </div>
+      )
+    },
   },
   {
     id: "actions",
@@ -101,3 +146,6 @@ export const columns: ColumnDef<VM>[] = [
     },
   },
 ]
+
+// Export the columns function
+export const createColumns = columnsDefinition;

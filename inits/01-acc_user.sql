@@ -7,6 +7,6 @@ CREATE ROLE acc_user WITH
   NOCREATEROLE                                                        -- Cannot create roles
   REPLICATION                                                         -- Can initiate streaming replication
   NOBYPASSRLS                                                         -- Cannot bypass row-level security
-  PASSWORD 'BALLS123';                                                -- Password for the role
+  PASSWORD 'CHANGEME';                                                -- Password for the role
 
 COMMENT ON ROLE acc_user IS 'Regular user role for account operations with limited privileges';

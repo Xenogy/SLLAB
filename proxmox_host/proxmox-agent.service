@@ -1,0 +1,14 @@
+[Unit]
+Description=Proxmox Host Agent for AccountDB
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/proxmox-agent
+ExecStart=/usr/bin/python3 /opt/proxmox-agent/main.py
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

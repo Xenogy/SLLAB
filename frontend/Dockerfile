@@ -1,62 +1,61 @@
-# ./Dockerfile
+# ./Dockerfile.optimized
 
 # ---- Base Node image ----
-# Use an official Node.js Alpine image for a smaller footprint. Choose a specific LTS version.
 FROM node:20-alpine AS base
-# Set the working directory in the container
 WORKDIR /usr/src/app
 
-
 # ---- Dependencies Stage ----
-# Install dependencies first to leverage Docker build cache
 FROM base AS deps
-# Copy package.json and lock file from the 'nextjs' subdirectory
+# Copy only package files to leverage layer caching
 COPY nextjs/package.json nextjs/package-lock.json* ./
-# Use npm ci with legacy-peer-deps to handle React 19 compatibility issues
-RUN npm ci --legacy-peer-deps
-
+# Use cache mount for npm
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps --prefer-offline
 
 # ---- Build Stage ----
-# Build the Next.js application
 FROM base AS builder
 # Copy dependencies from the 'deps' stage
 COPY --from=deps /usr/src/app/node_modules ./node_modules
-# Copy the rest of the application code from the 'app' subdirectory
-COPY nextjs/ ./
+# Copy only necessary files for the build
+COPY nextjs/public ./public
+COPY nextjs/app ./app
+COPY nextjs/components ./components
+COPY nextjs/lib ./lib
+COPY nextjs/hooks ./hooks
+COPY nextjs/styles ./styles
+COPY nextjs/*.js ./
+COPY nextjs/*.ts ./
+COPY nextjs/*.tsx ./
+COPY nextjs/*.json ./
+COPY nextjs/*.mjs ./
+
 # Set NODE_ENV to production for build optimizations
 ENV NODE_ENV production
 # Pass API URL from build arg
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-# Build the Next.js application
-# This uses the 'output: "standalone"' feature defined in next.config.js
-RUN npm run build --legacy-peer-deps
 
+# Build the Next.js application with cache mount for .next/cache
+RUN --mount=type=cache,target=/usr/src/app/.next/cache \
+    npm run build --legacy-peer-deps
 
 # ---- Production Stage ----
-# Create the final, minimal image
 FROM node:20-alpine AS runner
 WORKDIR /usr/src/app
 
 # Set NODE_ENV to production for runtime
 ENV NODE_ENV production
-# Optional: Expose the port Next.js will run on (default 3000)
 ENV PORT 3000
-# Pass API URL from build arg to runtime
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 # Create a non-root user and group for security
-# Using standard names often found in node images
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
 # Copy only the necessary artifacts from the builder stage
-# Copy the standalone Next.js server output
 COPY --from=builder /usr/src/app/.next/standalone ./
-# Copy the static assets (needed by the server)
 COPY --from=builder --chown=nextjs:nodejs /usr/src/app/.next/static ./.next/static
-# Copy the public assets (needed by the server)
 COPY --from=builder --chown=nextjs:nodejs /usr/src/app/public ./public
 
 # Switch to the non-root user

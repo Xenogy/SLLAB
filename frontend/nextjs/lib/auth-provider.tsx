@@ -40,10 +40,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         // Get token from localStorage
         const storedToken = localStorage.getItem(AUTH_CONFIG.tokenKey)
+        console.log(`Checking authentication. Token exists: ${!!storedToken}`)
+
         if (storedToken) {
           setToken(storedToken)
+          console.log(`Using token: ${storedToken.substring(0, 10)}...`)
 
           // Validate the token by fetching user info
+          console.log("Validating token by fetching user info...")
           const response = await fetch(`${API_CONFIG.baseUrl}/auth/me`, {
             headers: {
               Authorization: `Bearer ${storedToken}`,
@@ -51,21 +55,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             credentials: "include",
           })
 
+          console.log(`Auth check response status: ${response.status}`)
           if (response.ok) {
             const userData = await response.json()
+            console.log("User data retrieved successfully:", userData.username)
             setUser(userData)
           } else {
+            console.warn("Token validation failed. Status:", response.status)
+            // Try to get error details
+            try {
+              const errorData = await response.text()
+              console.error("Auth error details:", errorData)
+            } catch (e) {
+              console.error("Could not parse error response")
+            }
+
             // Token is invalid or expired
             localStorage.removeItem(AUTH_CONFIG.tokenKey)
+            document.cookie = `${AUTH_CONFIG.tokenKey}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`
             setToken(null)
+            console.log("Token removed from storage")
           }
+        } else {
+          console.log("No token found in localStorage")
         }
       } catch (error) {
         console.error("Authentication error:", error)
         localStorage.removeItem(AUTH_CONFIG.tokenKey)
+        document.cookie = `${AUTH_CONFIG.tokenKey}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`
         setToken(null)
+        console.log("Token removed due to error")
       } finally {
         setLoading(false)
+        console.log("Auth check completed")
       }
     }
 
@@ -122,10 +144,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Store token in localStorage and as a cookie
       localStorage.setItem(AUTH_CONFIG.tokenKey, data.access_token)
+      console.log(`Token stored in localStorage: ${data.access_token.substring(0, 10)}...`)
 
       // Set a cookie for the token as well (for middleware)
       document.cookie = `${AUTH_CONFIG.tokenKey}=${data.access_token}; path=/; max-age=86400; SameSite=Lax`
+      console.log("Token also stored as cookie")
 
+      // Update state
       setToken(data.access_token)
 
       // Set user information
@@ -159,9 +184,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        console.error("Registration API error:", errorData)
-        throw new Error(errorData.detail || "Registration failed")
+        const errorText = await response.text()
+        console.error("Registration API error:", errorText)
+
+        let errorDetail = "Registration failed"
+        try {
+          // Try to parse as JSON
+          const errorData = JSON.parse(errorText)
+          console.log("Parsed error data:", errorData)
+          errorDetail = errorData.detail || "Registration failed"
+        } catch (e) {
+          // If not valid JSON, use the raw text
+          console.log("Error response is not valid JSON:", errorText)
+          errorDetail = errorText || "Registration failed"
+        }
+
+        throw new Error(errorDetail)
       }
 
       // Log the successful registration
