@@ -47,25 +47,54 @@ def generate_cache_key(query: str, params: Optional[Tuple] = None) -> str:
     Returns:
         str: The cache key
     """
-    # Create a string representation of the query and parameters
-    key_str = query
+    # Create a string representation of the query
+    key_str = str(query)
+
+    # If params is provided, add a hash of the params
     if params:
         try:
-            # Convert params to a JSON-serializable format
-            serializable_params = []
-            for param in params:
-                if isinstance(param, (str, int, float, bool, type(None))):
-                    serializable_params.append(param)
+            # Check if params is actually a tuple or list
+            if not isinstance(params, (tuple, list)):
+                # Convert string or other single value to a tuple with one element
+                if isinstance(params, (str, int, float, bool)):
+                    params = (params,)
+                    logger.debug(f"Converted single value param to tuple: {params}")
                 else:
-                    serializable_params.append(str(param))
+                    logger.warning(f"Params is not a tuple or list: {type(params)}")
+                    # Try to convert to a tuple if possible
+                    try:
+                        params = tuple([params])
+                        logger.debug(f"Converted non-standard param to tuple: {params}")
+                    except:
+                        # Use a random hash for non-tuple/list params
+                        import random
+                        random_suffix = "_random_" + str(random.getrandbits(32))
+                        key_str = str(key_str) + random_suffix
+                        # Skip the rest of the param processing
+                        return hashlib.md5(key_str.encode()).hexdigest()
+            else:
+                # Convert params to a JSON-serializable format
+                serializable_params = []
+                for param in params:
+                    if isinstance(param, (str, int, float, bool, type(None))):
+                        serializable_params.append(param)
+                    else:
+                        # For complex objects, use their class name and id
+                        param_repr = f"<{param.__class__.__name__}_{id(param)}>"
+                        serializable_params.append(param_repr)
 
-            key_str += json.dumps(serializable_params, sort_keys=True)
+                # Create a hash of the serialized params
+                params_str = json.dumps(serializable_params, sort_keys=True)
+                params_hash = hashlib.md5(params_str.encode()).hexdigest()
+                key_str = str(key_str) + "_params_" + params_hash
         except Exception as e:
             logger.warning(f"Error serializing params for cache key: {e}")
-            # Use a fallback that won't cause errors
-            key_str += str(hash(str(params)))
+            # Use a random hash as fallback
+            import random
+            random_suffix = "_random_" + str(random.getrandbits(32))
+            key_str = str(key_str) + random_suffix
 
-    # Generate a hash of the string
+    # Generate a hash of the final key string
     return hashlib.md5(key_str.encode()).hexdigest()
 
 def get_from_cache(key: str) -> Optional[Tuple[Any, float]]:
@@ -276,23 +305,28 @@ def cached_query(ttl: Optional[int] = None) -> Callable:
             if not query:
                 return func(*args, **kwargs)
 
-            # Generate a cache key
-            key = generate_cache_key(query, params)
+            # Generate a cache key with error handling
+            try:
+                key = generate_cache_key(query, params)
 
-            # Try to get the value from the cache
-            cached_value = get_from_cache(key)
+                # Try to get the value from the cache
+                cached_value = get_from_cache(key)
 
-            if cached_value:
-                value, _ = cached_value
-                return value
+                if cached_value:
+                    value, _ = cached_value
+                    return value
 
-            # Call the function
-            result = func(*args, **kwargs)
+                # Call the function
+                result = func(*args, **kwargs)
 
-            # Cache the result
-            put_in_cache(key, result)
+                # Cache the result
+                put_in_cache(key, result)
 
-            return result
+                return result
+            except Exception as e:
+                logger.warning(f"Error in cache handling, bypassing cache: {e}")
+                # If there's any error in the caching logic, just call the function directly
+                return func(*args, **kwargs)
 
         return wrapper
 

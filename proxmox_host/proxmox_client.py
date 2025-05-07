@@ -67,15 +67,44 @@ class ProxmoxClient:
                     # Get VM status for runtime information
                     status = self.proxmox.nodes(self.node_name).qemu(vm_id).status.current.get()
 
+                    # Get CPU usage if VM is running
+                    cpu_usage_percent = 0
+                    if vm.get('status') == 'running' and 'cpu' in status:
+                        # Proxmox API returns CPU usage as a decimal value between 0 and N,
+                        # where N is the number of cores. For example, if a VM with 4 cores
+                        # is using 2 cores worth of CPU, the value will be 2.0
+                        cpu_usage = status.get('cpu', 0)
+                        cpu_cores = vm.get('cpus', 1)
+
+                        logger.info(f"VM {vm_id} raw CPU usage: {cpu_usage}, cores: {cpu_cores}")
+
+                        if cpu_cores > 0:
+                            # Convert to percentage of total available CPU
+                            # Divide by number of cores to get utilization ratio (0-1)
+                            # Then multiply by 100 to get percentage
+                            cpu_usage_percent = (cpu_usage / cpu_cores) * 100
+
+                            # Ensure the percentage doesn't exceed 100%
+                            cpu_usage_percent = min(cpu_usage_percent, 100)
+
+                            logger.info(f"VM {vm_id} calculated CPU usage: {cpu_usage_percent}%")
+
+                    # Get uptime if VM is running
+                    uptime_seconds = 0
+                    if vm.get('status') == 'running' and 'uptime' in status:
+                        uptime_seconds = status.get('uptime', 0)
+
                     # Combine all information
                     enriched_vm = {
                         'vmid': vm_id,
                         'name': vm.get('name', f"VM-{vm_id}"),
                         'status': vm.get('status', 'unknown'),
                         'cpu_cores': vm.get('cpus', 0),
+                        'cpu_usage_percent': cpu_usage_percent,
                         'memory_mb': vm.get('maxmem', 0) // (1024 * 1024),  # Convert to MB
                         'disk_gb': self._calculate_disk_size(vm, config),
                         'ip_address': self._get_ip_address(vm_id, config, status),
+                        'uptime_seconds': uptime_seconds,
                         'proxmox_node': self.node_name,
                         'template_id': config.get('template', None),
                         'notes': config.get('description', ''),

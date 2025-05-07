@@ -26,8 +26,8 @@ class VMRepository(BaseRepository):
         self.table_name = "vms"
         self.id_column = "id"
         self.default_columns = """
-            id, vmid, name, status, cpu_cores, memory_mb,
-            disk_gb, ip_address, proxmox_node_id, owner_id,
+            id, vmid, name, status, cpu_cores, cpu_usage_percent, memory_mb,
+            disk_gb, ip_address, uptime_seconds, proxmox_node_id, owner_id,
             created_at, updated_at
         """
         self.default_order_by = "id DESC"
@@ -114,6 +114,97 @@ class VMRepository(BaseRepository):
         vms = self.get_all(condition, tuple(params), self.default_columns)
         return vms[0] if vms else None
 
+    def check_vm_ownership(self, vm_identifier: str, user_id: int) -> bool:
+        """
+        Check if a user owns a specific VM by ID or VMID.
+
+        Args:
+            vm_identifier (str): The VM identifier (could be database ID or Proxmox VMID).
+            user_id (int): The ID of the user to check ownership for.
+
+        Returns:
+            bool: True if the user owns the VM, False otherwise.
+        """
+        try:
+            # Validate and normalize the vm_identifier
+            try:
+                # Try to convert to integer if it's a numeric string
+                if str(vm_identifier).isdigit():
+                    vm_identifier_int = int(vm_identifier)
+                else:
+                    # If not numeric, use as is (string comparison)
+                    vm_identifier_int = None
+
+                logger.info(f"Checking ownership of VM with identifier {vm_identifier} for user {user_id}")
+            except (ValueError, TypeError) as e:
+                logger.error(f"Invalid VM identifier format: {vm_identifier}, error: {e}")
+                vm_identifier_int = None
+
+            # First try to find the VM by database ID (most common case from frontend)
+            vm = None
+            if vm_identifier_int is not None:
+                query = """
+                    SELECT id, owner_id FROM vms
+                    WHERE id = %s
+                """
+                vm = self.execute_query_single(query, (vm_identifier_int,), with_rls=False)
+
+                if vm:
+                    logger.info(f"Found VM by database ID: {vm_identifier_int}")
+
+            # If not found by ID, try to find by VMID (for Proxmox VM IDs)
+            if not vm and vm_identifier_int is not None:
+                query = """
+                    SELECT id, owner_id FROM vms
+                    WHERE vmid = %s
+                """
+                vm = self.execute_query_single(query, (vm_identifier_int,), with_rls=False)
+
+                if vm:
+                    logger.info(f"Found VM by Proxmox VMID: {vm_identifier_int}")
+
+            # If still not found, try string comparison with VMID
+            if not vm:
+                query = """
+                    SELECT id, owner_id FROM vms
+                    WHERE vmid::text = %s
+                """
+                vm = self.execute_query_single(query, (str(vm_identifier),), with_rls=False)
+
+                if vm:
+                    logger.info(f"Found VM by string VMID: {vm_identifier}")
+
+            # If VM not found by any method
+            if not vm:
+                logger.warning(f"VM with identifier {vm_identifier} not found")
+                return False
+
+            # Check if the user is the owner
+            if vm["owner_id"] == user_id:
+                logger.info(f"User {user_id} is the owner of VM with identifier {vm_identifier}")
+                return True
+
+            # If not the owner, check if the user is in the whitelist
+            whitelist_query = """
+                SELECT 1 FROM whitelist
+                WHERE vm_id = %s AND user_id = %s
+            """
+            whitelist_result = self.execute_query_single(whitelist_query, (vm["id"], user_id), with_rls=False)
+
+            result = whitelist_result is not None
+            if result:
+                logger.info(f"User {user_id} is in the whitelist for VM with identifier {vm_identifier}")
+            else:
+                logger.warning(f"User {user_id} does not have permission for VM with identifier {vm_identifier}")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error checking VM ownership: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
+
     def create_vm(self, vm_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Create a new VM.
@@ -162,17 +253,28 @@ class VMRepository(BaseRepository):
         Returns:
             List[Dict[str, Any]]: A list of dictionaries with VMs.
         """
-        condition = "proxmox_node_id = %s"
-        params = [proxmox_node_id]
+        try:
+            condition = "proxmox_node_id = %s"
+            params = [proxmox_node_id]
 
-        # Get VMs
-        vms = self.get_all(condition, tuple(params), self.default_columns)
+            # Disable cache for this query to avoid serialization issues
+            from ..query_cache import cache_context
 
-        # Filter by whitelist if provided
-        if whitelist:
-            vms = [vm for vm in vms if vm["vmid"] in whitelist]
+            # Get VMs with cache disabled
+            with cache_context(enable=False):
+                vms = self.get_all(condition, tuple(params), self.default_columns)
 
-        return vms
+            # Filter by whitelist if provided
+            if whitelist:
+                vms = [vm for vm in vms if vm["vmid"] in whitelist]
+
+            return vms
+        except Exception as e:
+            logger.error(f"Error in get_vms_by_proxmox_node: {e}")
+            logger.error(f"Error type: {type(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
 
     def get_vms_with_proxmox_node_name(self, limit: int = 10, offset: int = 0, search: Optional[str] = None,
                                       status: Optional[str] = None, proxmox_node_id: Optional[int] = None) -> Dict[str, Any]:
@@ -193,8 +295,8 @@ class VMRepository(BaseRepository):
             # Build the query
             query = """
                 SELECT
-                    v.id, v.vmid, v.name, v.ip_address, v.status, v.cpu_cores, v.memory_mb,
-                    v.disk_gb, v.proxmox_node_id, pn.name as proxmox_node, v.template_id, v.notes, v.created_at, v.updated_at, v.owner_id
+                    v.id, v.vmid, v.name, v.ip_address, v.status, v.cpu_cores, v.cpu_usage_percent, v.memory_mb,
+                    v.disk_gb, v.uptime_seconds, v.proxmox_node_id, pn.name as proxmox_node, v.template_id, v.notes, v.created_at, v.updated_at, v.owner_id
                 FROM vms v
                 LEFT JOIN proxmox_nodes pn ON v.proxmox_node_id = pn.id
                 WHERE 1=1
@@ -265,7 +367,7 @@ class VMRepository(BaseRepository):
         try:
             query = """
                 SELECT
-                    v.id, v.vmid, v.name, v.ip_address, v.status, v.cpu_cores, v.memory_mb,
+                    v.id, v.vmid, v.name, v.ip_address, v.status, v.cpu_cores, v.cpu_usage_percent, v.memory_mb,
                     v.disk_gb, v.proxmox_node_id, pn.name as proxmox_node, v.template_id, v.notes, v.created_at, v.updated_at, v.owner_id
                 FROM vms v
                 LEFT JOIN proxmox_nodes pn ON v.proxmox_node_id = pn.id
@@ -302,14 +404,14 @@ class VMRepository(BaseRepository):
         # Insert the VM
         query = """
             INSERT INTO vms (
-                vmid, name, ip_address, status, cpu_cores, memory_mb,
-                disk_gb, proxmox_node_id, template_id, notes, owner_id
+                vmid, name, ip_address, status, cpu_cores, cpu_usage_percent, memory_mb,
+                disk_gb, uptime_seconds, proxmox_node_id, template_id, notes, owner_id
             ) VALUES (
-                %(vmid)s, %(name)s, %(ip_address)s, %(status)s, %(cpu_cores)s, %(memory_mb)s,
-                %(disk_gb)s, %(proxmox_node_id)s, %(template_id)s, %(notes)s, %(owner_id)s
+                %(vmid)s, %(name)s, %(ip_address)s, %(status)s, %(cpu_cores)s, %(cpu_usage_percent)s, %(memory_mb)s,
+                %(disk_gb)s, %(uptime_seconds)s, %(proxmox_node_id)s, %(template_id)s, %(notes)s, %(owner_id)s
             ) RETURNING
-                id, vmid, name, ip_address, status, cpu_cores, memory_mb,
-                disk_gb, proxmox_node_id, template_id, notes, created_at, updated_at, owner_id
+                id, vmid, name, ip_address, status, cpu_cores, cpu_usage_percent, memory_mb,
+                disk_gb, uptime_seconds, proxmox_node_id, template_id, notes, created_at, updated_at, owner_id
         """
         created_vm = self.execute_query_single(query, vm_data)
 
@@ -345,16 +447,18 @@ class VMRepository(BaseRepository):
                 ip_address = COALESCE(%(ip_address)s, ip_address),
                 status = COALESCE(%(status)s, status),
                 cpu_cores = COALESCE(%(cpu_cores)s, cpu_cores),
+                cpu_usage_percent = COALESCE(%(cpu_usage_percent)s, cpu_usage_percent),
                 memory_mb = COALESCE(%(memory_mb)s, memory_mb),
                 disk_gb = COALESCE(%(disk_gb)s, disk_gb),
+                uptime_seconds = COALESCE(%(uptime_seconds)s, uptime_seconds),
                 proxmox_node_id = COALESCE(%(proxmox_node_id)s, proxmox_node_id),
                 template_id = COALESCE(%(template_id)s, template_id),
                 notes = COALESCE(%(notes)s, notes),
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = %(id)s
             RETURNING
-                id, vmid, name, ip_address, status, cpu_cores, memory_mb,
-                disk_gb, proxmox_node_id, template_id, notes, created_at, updated_at, owner_id
+                id, vmid, name, ip_address, status, cpu_cores, cpu_usage_percent, memory_mb,
+                disk_gb, uptime_seconds, proxmox_node_id, template_id, notes, created_at, updated_at, owner_id
         """
         # Add vm_id to vm_data
         vm_data["id"] = vm_id

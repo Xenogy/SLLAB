@@ -46,7 +46,12 @@ def get_user_db_connection(
 
                 # Set RLS context
                 if user_id is not None:
-                    logger.debug(f"Setting RLS context: user_id={user_id}, role={user_role}")
+                    # Use debug level for system user (admin) to reduce log spam
+                    if user_id == 1 and user_role == 'admin':
+                        logger.debug(f"Setting RLS context: user_id={user_id}, role={user_role}")
+                    else:
+                        logger.info(f"Setting RLS context: user_id={user_id}, role={user_role}")
+
                     cursor = conn.cursor()
                     try:
                         success = set_rls_context(cursor, user_id, user_role)
@@ -110,7 +115,12 @@ def get_user_db_connection_with_retries(
 
                 # Set RLS context
                 if user_id is not None:
-                    logger.debug(f"Setting RLS context: user_id={user_id}, role={user_role}")
+                    # This is already at debug level, but let's make it consistent with the other function
+                    if user_id == 1 and user_role == 'admin':
+                        logger.debug(f"Setting RLS context: user_id={user_id}, role={user_role}")
+                    else:
+                        logger.info(f"Setting RLS context: user_id={user_id}, role={user_role}")
+
                     cursor = conn.cursor()
                     try:
                         success = set_rls_context(cursor, user_id, user_role)

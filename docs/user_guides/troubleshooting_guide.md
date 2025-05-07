@@ -12,9 +12,12 @@ This guide provides solutions to common issues you might encounter when using th
 4. [API Issues](#api-issues)
 5. [Authentication Issues](#authentication-issues)
 6. [Performance Issues](#performance-issues)
-7. [Common Error Codes](#common-error-codes)
-8. [Logging and Debugging](#logging-and-debugging)
-9. [Getting Help](#getting-help)
+7. [Proxmox Integration Issues](#proxmox-integration-issues)
+8. [Windows VM Agent Issues](#windows-vm-agent-issues)
+9. [Log Storage Issues](#log-storage-issues)
+10. [Common Error Codes](#common-error-codes)
+11. [Logging and Debugging](#logging-and-debugging)
+12. [Getting Help](#getting-help)
 
 ## Installation Issues
 
@@ -70,10 +73,10 @@ This guide provides solutions to common issues you might encounter when using th
    # Ubuntu
    sudo apt update
    sudo apt install python3.9 python3.9-venv python3.9-dev
-   
+
    # macOS
    brew install python@3.9
-   
+
    # Windows
    # Download from https://www.python.org/downloads/
    ```
@@ -92,10 +95,10 @@ This guide provides solutions to common issues you might encounter when using th
    # Ubuntu
    sudo apt update
    sudo apt install build-essential libpq-dev
-   
+
    # macOS
    brew install postgresql
-   
+
    # Windows
    # Install Visual C++ Build Tools
    ```
@@ -115,7 +118,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Linux/macOS
    echo $DB_HOST
-   
+
    # Windows
    echo %DB_HOST%
    ```
@@ -123,7 +126,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Linux/macOS
    export DB_HOST=localhost
-   
+
    # Windows
    set DB_HOST=localhost
    ```
@@ -149,12 +152,12 @@ This guide provides solutions to common issues you might encounter when using th
      name: accountdb
      user: accountdb
      password: your_password
-   
+
    jwt:
      secret: your_jwt_secret
      algorithm: HS256
      expiration: 86400
-   
+
    api:
      host: 0.0.0.0
      port: 8000
@@ -178,10 +181,10 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Ubuntu
    sudo systemctl status postgresql
-   
+
    # macOS
    brew services list
-   
+
    # Docker
    docker-compose ps
    ```
@@ -189,10 +192,10 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Ubuntu
    sudo systemctl start postgresql
-   
+
    # macOS
    brew services start postgresql
-   
+
    # Docker
    docker-compose up -d postgres
    ```
@@ -232,7 +235,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker-compose exec api python -m scripts.init_db
-   
+
    # Manual
    python -m scripts.init_db
    ```
@@ -246,7 +249,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker-compose logs api
-   
+
    # Manual
    cat logs/api.log
    ```
@@ -254,7 +257,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker-compose exec api python -m scripts.run_migration
-   
+
    # Manual
    python -m scripts.run_migration
    ```
@@ -278,7 +281,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker-compose logs api
-   
+
    # Manual
    cat logs/api.log
    ```
@@ -291,7 +294,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker-compose run --rm api uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-   
+
    # Manual
    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
    ```
@@ -310,7 +313,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker-compose ps
-   
+
    # Manual
    ps aux | grep uvicorn
    ```
@@ -361,7 +364,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```http
    POST /auth/token
    Content-Type: application/json
-   
+
    {
      "username": "your_username",
      "password": "your_password"
@@ -426,7 +429,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker-compose up -d --scale api=4
-   
+
    # Manual
    uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
    ```
@@ -445,7 +448,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker-compose exec api python -m scripts.run_performance_migration
-   
+
    # Manual
    python -m scripts.run_performance_migration
    ```
@@ -458,7 +461,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker-compose exec api python -c "from db import get_pool_stats; print(get_pool_stats())"
-   
+
    # Manual
    python -c "from db import get_pool_stats; print(get_pool_stats())"
    ```
@@ -472,7 +475,7 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker stats
-   
+
    # Manual
    ps aux | grep uvicorn
    ```
@@ -484,11 +487,350 @@ This guide provides solutions to common issues you might encounter when using th
    ```bash
    # Docker
    docker-compose up -d --scale api=2
-   
+
    # Manual
    uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
    ```
 4. Increase the available memory if possible.
+
+## Proxmox Integration Issues
+
+### Proxmox Connection Errors
+
+**Problem**: Unable to connect to Proxmox API.
+
+**Solution**:
+1. Verify Proxmox API URL and credentials in the configuration:
+   ```bash
+   # Check environment variables
+   echo $PROXMOX_HOST
+   echo $PROXMOX_USER
+   echo $PROXMOX_PASSWORD
+
+   # Or check the configuration file
+   cat proxmox_host/config.py
+   ```
+2. Ensure the Proxmox server is accessible from the AccountDB server:
+   ```bash
+   ping <proxmox_host>
+   curl -k https://<proxmox_host>:8006/api2/json/version
+   ```
+3. Verify the Proxmox API user has sufficient permissions:
+   ```bash
+   # On the Proxmox server
+   pveum user list
+   pveum user show <username>
+   ```
+4. Check the Proxmox Host Agent logs:
+   ```bash
+   # Docker
+   docker-compose logs proxmox-agent
+
+   # Manual
+   cat /var/log/proxmox-agent.log
+   ```
+
+### VMs Not Showing Up
+
+**Problem**: VMs exist in Proxmox but don't appear in AccountDB.
+
+**Solution**:
+1. Verify that the Proxmox Host Agent is running:
+   ```bash
+   # Docker
+   docker-compose ps proxmox-agent
+
+   # Manual
+   systemctl status proxmox-agent
+   ```
+2. Check if the VM is on a whitelisted Proxmox node:
+   ```bash
+   # Check the whitelist in the database
+   psql -U accountdb -d accountdb -c "SELECT * FROM proxmox_nodes WHERE whitelist = true;"
+   ```
+3. Trigger a manual synchronization:
+   ```bash
+   # Using the API
+   curl -X POST "http://localhost:8000/proxmox-nodes/<node_id>/sync" \
+     -H "Authorization: Bearer <your_token>"
+
+   # Or using the Proxmox Host Agent API
+   curl -X POST "http://localhost:8000/sync/trigger"
+   ```
+4. Check if the VM owner is correctly set:
+   ```bash
+   # Check VM ownership in the database
+   psql -U accountdb -d accountdb -c "SELECT * FROM vms WHERE vmid = <vm_id>;"
+   ```
+
+### VM Operations Failing
+
+**Problem**: Unable to start, stop, or modify VMs.
+
+**Solution**:
+1. Verify that the Proxmox API user has sufficient permissions:
+   ```bash
+   # On the Proxmox server
+   pveum user token list <username>
+   pveum role list
+   ```
+2. Check if the VM is in a valid state for the operation:
+   ```bash
+   # On the Proxmox server
+   qm status <vmid>
+   ```
+3. Ensure the Proxmox node is online and responsive:
+   ```bash
+   # On the Proxmox server
+   pvecm status
+   ```
+4. Check the API logs for detailed error messages:
+   ```bash
+   # Docker
+   docker-compose logs api
+
+   # Manual
+   cat logs/api.log
+   ```
+
+### Proxmox Node Not Registered
+
+**Problem**: Proxmox node is not registered in AccountDB.
+
+**Solution**:
+1. Register the Proxmox node:
+   ```bash
+   # Using the API
+   curl -X POST "http://localhost:8000/proxmox-nodes" \
+     -H "Authorization: Bearer <your_token>" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "pve",
+       "url": "https://proxmox.example.com:8006",
+       "username": "root@pam",
+       "password": "your_password",
+       "verify_ssl": true
+     }'
+   ```
+2. Check if the node was registered successfully:
+   ```bash
+   # Using the API
+   curl -X GET "http://localhost:8000/proxmox-nodes" \
+     -H "Authorization: Bearer <your_token>"
+   ```
+3. If registration fails, check the API logs for detailed error messages.
+
+## Windows VM Agent Issues
+
+### Agent Installation Issues
+
+**Problem**: Unable to install the Windows VM Agent.
+
+**Solution**:
+1. Verify Python is installed on the Windows VM:
+   ```powershell
+   python --version
+   ```
+2. Install Python if necessary:
+   ```powershell
+   # Download and install Python from https://www.python.org/downloads/
+   # Or using Chocolatey
+   choco install python
+   ```
+3. Install the agent using the provided script:
+   ```powershell
+   # Run as Administrator
+   .\install.bat
+   ```
+4. If installation fails, check the installation logs:
+   ```powershell
+   cat .\install.log
+   ```
+
+### Agent Not Connecting
+
+**Problem**: Agent is installed but not connecting to AccountDB.
+
+**Solution**:
+1. Verify the agent is running:
+   ```powershell
+   Get-Service WindowsVMAgent
+   ```
+2. Start the agent if it's not running:
+   ```powershell
+   Start-Service WindowsVMAgent
+   ```
+3. Check the agent logs:
+   ```powershell
+   cat "C:\CsBotAgent\logs\windows_vm_agent.log"
+   ```
+4. Verify the agent configuration:
+   ```powershell
+   cat "C:\CsBotAgent\config.yaml"
+   ```
+5. Ensure the API key and server URL are correct:
+   ```yaml
+   General:
+     APIKey: "your_api_key"
+     ManagerBaseURL: "http://accountdb.example.com:8000"
+   ```
+6. Check network connectivity from the VM to the AccountDB server:
+   ```powershell
+   Test-NetConnection -ComputerName accountdb.example.com -Port 8000
+   ```
+
+### Events Not Being Detected
+
+**Problem**: Log events occur but no actions are triggered.
+
+**Solution**:
+1. Check if the log file paths in the configuration are correct:
+   ```yaml
+   EventMonitors:
+     - Name: "AccountLoginMonitor"
+       Type: "LogFileTail"
+       LogFilePath: "C:\\Path\\To\\CSBot\\bot.log"
+   ```
+2. Verify that the regex patterns match the actual log entries:
+   ```yaml
+   EventTriggers:
+     - EventName: "AccountLoginDetected"
+       Regex: 'User logged in:\s+(?P<account_id>\w+)'
+   ```
+3. Ensure the log files are accessible to the agent:
+   ```powershell
+   # Check permissions
+   Get-Acl "C:\Path\To\CSBot\bot.log"
+   ```
+4. Increase the log level for more detailed information:
+   ```yaml
+   General:
+     LogLevel: "DEBUG"
+   ```
+5. Restart the agent after configuration changes:
+   ```powershell
+   Restart-Service WindowsVMAgent
+   ```
+
+### Actions Not Executing
+
+**Problem**: Events are detected but actions don't run.
+
+**Solution**:
+1. Check if the script files exist in the configured scripts directory:
+   ```powershell
+   Get-ChildItem "C:\CsBotAgent\ActionScripts"
+   ```
+2. Verify that the scripts have the correct permissions:
+   ```powershell
+   Get-Acl "C:\CsBotAgent\ActionScripts\Set-Proxy.ps1"
+   ```
+3. Check if PowerShell execution policy allows running the scripts:
+   ```powershell
+   Get-ExecutionPolicy
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine
+   ```
+4. Check the agent logs for script execution errors:
+   ```powershell
+   cat "C:\CsBotAgent\logs\windows_vm_agent.log"
+   ```
+5. Test the script manually:
+   ```powershell
+   & "C:\CsBotAgent\ActionScripts\Set-Proxy.ps1" -ProxyAddress "proxy.example.com" -BypassList "localhost"
+   ```
+
+### Agent Registration Issues
+
+**Problem**: Unable to register the agent with AccountDB.
+
+**Solution**:
+1. Check if the VM ID is valid:
+   ```powershell
+   # In the agent configuration
+   cat "C:\CsBotAgent\config.yaml"
+   ```
+2. Verify that the VM exists in AccountDB:
+   ```bash
+   # Using the API
+   curl -X GET "http://localhost:8000/vms" \
+     -H "Authorization: Bearer <your_token>"
+   ```
+3. Try registering the agent manually:
+   ```bash
+   # Using the API
+   curl -X POST "http://localhost:8000/windows-vm-agent/register" \
+     -H "Authorization: Bearer <your_token>" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "vm_id": 123,
+       "api_key": "your_api_key",
+       "hostname": "win-vm-01",
+       "ip_address": "192.168.1.100"
+     }'
+   ```
+4. Check the API logs for detailed error messages.
+
+## Log Storage Issues
+
+### Logs Not Appearing in UI
+
+**Problem**: Logs are being generated but not appearing in the log viewer UI.
+
+**Solution**:
+1. Check if you have permission to view the logs (regular users can only see their own logs)
+2. Verify the API endpoint is working:
+   ```bash
+   curl -X GET "http://localhost:8000/api/logs" \
+     -H "Authorization: Bearer <your_token>"
+   ```
+3. Check browser console for JavaScript errors
+4. Verify logs exist in the database:
+   ```bash
+   psql -U accountdb -d accountdb -c "SELECT COUNT(*) FROM logs;"
+   ```
+
+### Agent Logging Issues
+
+**Problem**: Windows VM Agent or Proxmox Host Agent cannot send logs to the central system.
+
+**Solution**:
+1. Check agent configuration:
+   ```bash
+   # Windows VM Agent
+   cat "C:\CsBotAgent\config.yaml"
+
+   # Proxmox Host Agent
+   cat "/opt/proxmox-agent/.env"
+   ```
+2. Verify network connectivity:
+   ```bash
+   # Windows
+   Test-NetConnection -ComputerName accountdb.example.com -Port 8000
+
+   # Linux
+   curl -v http://accountdb.example.com:8000/health
+   ```
+3. Check agent logs for connection errors
+4. Verify API key is valid
+
+### Log Cleanup Issues
+
+**Problem**: Log cleanup is not working or deleting too many logs.
+
+**Solution**:
+1. Run a dry run cleanup to see what would be deleted:
+   ```bash
+   curl -X POST "http://localhost:8000/api/logs/cleanup?dry_run=true" \
+     -H "Authorization: Bearer <your_token>"
+   ```
+2. Check retention policies:
+   ```bash
+   psql -U accountdb -d accountdb -c "SELECT * FROM logs_retention_policies;"
+   ```
+3. Run cleanup manually:
+   ```bash
+   docker-compose exec api python -m backend.scripts.cleanup_logs --dry-run
+   ```
 
 ## Common Error Codes
 

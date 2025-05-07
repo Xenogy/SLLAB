@@ -1,12 +1,30 @@
 "use client"
 
+// This component is client-side only
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Activity, Bot, Server, AlertTriangle } from "lucide-react"
+import { Activity, Bot, Server, AlertTriangle, Loader2 } from "lucide-react"
 import LineChartComponent from "@/components/charts/line-chart"
 import { ChartWrapper } from "@/components/charts/chart-wrapper"
+import { useLatestMetricValue, useSystemOverview } from "@/hooks/use-timeseries"
+import { Button } from "@/components/ui/button"
 
 export function DashboardStats() {
+  // Fetch system overview data
+  const {
+    cpuUsage,
+    memoryUsage,
+    loading: systemOverviewLoading,
+    error: systemOverviewError,
+    refresh: refreshSystemOverview
+  } = useSystemOverview("hourly", "day")
+
+  // Fetch latest metric values
+  const { value: latestAccountCount, loading: accountCountLoading } = useLatestMetricValue("account_count", "system", "system")
+  const { value: latestVmCount, loading: vmCountLoading } = useLatestMetricValue("vm_count", "system", "system")
+  const { value: latestErrorCount, loading: errorCountLoading } = useLatestMetricValue("error_count", "system", "system")
+  const { value: latestJobCount, loading: jobCountLoading } = useLatestMetricValue("job_count", "system", "system")
   return (
     <Tabs defaultValue="overview" className="space-y-4">
       <TabsList>
@@ -16,6 +34,18 @@ export function DashboardStats() {
         <TabsTrigger value="vms">VMs</TabsTrigger>
       </TabsList>
       <TabsContent value="overview" className="space-y-4">
+        <div className="flex justify-end mb-2">
+          <Button onClick={refreshSystemOverview} variant="outline" size="sm">
+            {systemOverviewLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              "Refresh"
+            )}
+          </Button>
+        </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -23,8 +53,14 @@ export function DashboardStats() {
               <Bot className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">142</div>
-              <p className="text-xs text-muted-foreground">+12 from last month</p>
+              <div className="text-2xl font-bold">
+                {accountCountLoading ? (
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                ) : (
+                  latestAccountCount !== null ? latestAccountCount : 'N/A'
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Managed accounts</p>
             </CardContent>
           </Card>
           <Card>
@@ -33,8 +69,14 @@ export function DashboardStats() {
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">24</div>
-              <p className="text-xs text-muted-foreground">+2 since yesterday</p>
+              <div className="text-2xl font-bold">
+                {jobCountLoading ? (
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                ) : (
+                  latestJobCount !== null ? latestJobCount : 'N/A'
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Running jobs</p>
             </CardContent>
           </Card>
           <Card>
@@ -43,8 +85,14 @@ export function DashboardStats() {
               <Server className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">12</div>
-              <p className="text-xs text-muted-foreground">+2 from last week</p>
+              <div className="text-2xl font-bold">
+                {vmCountLoading ? (
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                ) : (
+                  latestVmCount !== null ? latestVmCount : 'N/A'
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Active virtual machines</p>
             </CardContent>
           </Card>
           <Card>
@@ -53,8 +101,14 @@ export function DashboardStats() {
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">3</div>
-              <p className="text-xs text-muted-foreground">-2 from yesterday</p>
+              <div className="text-2xl font-bold">
+                {errorCountLoading ? (
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                ) : (
+                  latestErrorCount !== null ? latestErrorCount : 'N/A'
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Unresolved errors</p>
             </CardContent>
           </Card>
         </div>
@@ -65,7 +119,26 @@ export function DashboardStats() {
             </CardHeader>
             <CardContent className="pl-2">
               <ChartWrapper className="aspect-[2/1]" title="Performance metrics over time">
-                <LineChartComponent />
+                {systemOverviewError ? (
+                  <div className="flex h-full items-center justify-center">
+                    <p className="text-sm text-muted-foreground">
+                      Error loading performance data. Please try again.
+                    </p>
+                  </div>
+                ) : cpuUsage && cpuUsage.length > 0 ? (
+                  <LineChartComponent
+                    data={cpuUsage}
+                    loading={systemOverviewLoading}
+                    color="#f97316"
+                    showDots={false}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <p className="text-sm text-muted-foreground">
+                      No performance data available. Please generate sample data or wait for metrics to be collected.
+                    </p>
+                  </div>
+                )}
               </ChartWrapper>
             </CardContent>
           </Card>

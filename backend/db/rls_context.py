@@ -78,10 +78,12 @@ def set_rls_context(cursor, user_id: Union[int, str], user_role: str) -> bool:
         result = cursor.fetchone()
 
         if result and result[0] == user_id_str and result[1] == user_role:
+            # Single log message at debug level for normal operation
             logger.debug(f"RLS context set: user_id={result[0]}, role={result[1]}")
 
-            # Log for security audit
-            logger.info(f"RLS context set for user_id={user_id_str}, role={user_role}")
+            # Only log at INFO level for security audit if it's not the system user (admin)
+            if user_id != 1 or user_role != 'admin':
+                logger.info(f"RLS context set for user_id={user_id_str}, role={user_role}")
 
             return True
         else:
@@ -135,9 +137,9 @@ def clear_rls_context(cursor) -> bool:
 
             # Log for security audit
             if previous_user_id and previous_user_role:
-                logger.info(f"RLS context cleared for previous user_id={previous_user_id}, role={previous_user_role}")
+                logger.debug(f"RLS context cleared for previous user_id={previous_user_id}, role={previous_user_role}")
             else:
-                logger.info("RLS context cleared (no previous context)")
+                logger.debug("RLS context cleared (no previous context)")
 
             return True
         else:

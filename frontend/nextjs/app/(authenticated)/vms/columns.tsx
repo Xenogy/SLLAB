@@ -19,11 +19,11 @@ import { VMTableData } from "./page"
 
 // Define the props for the columns
 export type VMColumnsProps = {
-  updateVMWhitelist: (vmId: string, checked: boolean) => void;
+  // No props needed after removing whitelist functionality
 }
 
 // Define the columns
-const columnsDefinition = ({ updateVMWhitelist }: VMColumnsProps): ColumnDef<VMTableData>[] => [
+const columnsDefinition = ({}: VMColumnsProps): ColumnDef<VMTableData>[] => [
   {
     accessorKey: "name",
     header: "Name",
@@ -79,29 +79,7 @@ const columnsDefinition = ({ updateVMWhitelist }: VMColumnsProps): ColumnDef<VMT
       )
     },
   },
-  {
-    accessorKey: "whitelist",
-    header: "Whitelist",
-    cell: ({ row }) => {
-      const whitelist = row.getValue("whitelist") as boolean || false
-      const vm = row.original
 
-      return (
-        <div className="flex items-center">
-          {whitelist ? (
-            <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-          ) : (
-            <Star className="h-4 w-4 text-muted-foreground" />
-          )}
-          <Switch
-            checked={whitelist}
-            className="ml-2"
-            onCheckedChange={(checked) => updateVMWhitelist(vm.id, checked)}
-          />
-        </div>
-      )
-    },
-  },
   {
     id: "actions",
     cell: ({ row }) => {

@@ -1,0 +1,2 @@
+[console_scripts]
+windows-vm-agent = windows_vm_agent.main:main

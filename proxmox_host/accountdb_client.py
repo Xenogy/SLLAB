@@ -4,14 +4,21 @@ AccountDB API client for sending VM information.
 
 from typing import List, Dict, Any, Optional
 import httpx
+import asyncio
 from loguru import logger
 from config import config
+from log_client import LogClient
 
 class AccountDBClient:
     """Client for interacting with the AccountDB API."""
 
-    def __init__(self):
-        """Initialize the AccountDB client."""
+    def __init__(self, log_client: Optional[LogClient] = None):
+        """
+        Initialize the AccountDB client.
+
+        Args:
+            log_client: Optional log client for sending logs to central storage.
+        """
         self.base_url = config.accountdb.url
         self.api_key = config.accountdb.api_key
         self.node_id = config.accountdb.node_id
@@ -20,7 +27,16 @@ class AccountDBClient:
             "Content-Type": "application/json",
         }
         self.access_token = None
+        self.log_client = log_client
+
         logger.info(f"Initialized AccountDB client for URL: {self.base_url}, Node ID: {self.node_id}")
+
+        # Log initialization
+        if self.log_client:
+            asyncio.create_task(self.log_client.log_info(
+                message=f"AccountDB client initialized for URL: {self.base_url}, Node ID: {self.node_id}",
+                category="initialization"
+            ))
 
     async def login(self) -> bool:
         """
@@ -53,11 +69,23 @@ class AccountDBClient:
         Returns:
             Optional[Dict[str, Any]]: Node information or None if failed
         """
+        endpoint = f"/proxmox-nodes/agent-node/{self.node_id}"
+        method = "GET"
+
         try:
             async with httpx.AsyncClient() as client:
                 logger.info(f"Fetching node information from AccountDB API")
+
+                # Log API call
+                if self.log_client:
+                    await self.log_client.log_api_call(
+                        endpoint=endpoint,
+                        method=method,
+                        details={"node_id": self.node_id}
+                    )
+
                 response = await client.get(
-                    f"{self.base_url}/proxmox-nodes/agent-node/{self.node_id}",
+                    f"{self.base_url}{endpoint}",
                     params={"api_key": self.api_key},
                     timeout=30.0,
                 )
@@ -65,16 +93,57 @@ class AccountDBClient:
                 if response.status_code == 200:
                     data = response.json()
                     logger.info(f"Successfully retrieved node information")
+
+                    # Log successful API call
+                    if self.log_client:
+                        await self.log_client.log_api_call(
+                            endpoint=endpoint,
+                            method=method,
+                            status_code=response.status_code,
+                            details={"node_id": self.node_id}
+                        )
+
                     return data
                 else:
                     error_text = response.text
                     logger.error(f"Error getting node information: HTTP {response.status_code} - {error_text}")
+
+                    # Log failed API call
+                    if self.log_client:
+                        await self.log_client.log_api_call(
+                            endpoint=endpoint,
+                            method=method,
+                            status_code=response.status_code,
+                            error=error_text,
+                            details={"node_id": self.node_id}
+                        )
+
                     return None
         except httpx.HTTPError as e:
             logger.error(f"Network error getting node information: {e}")
+
+            # Log error
+            if self.log_client:
+                await self.log_client.log_error(
+                    message=f"Network error getting node information",
+                    category="api",
+                    details={"endpoint": endpoint, "method": method, "node_id": self.node_id},
+                    exception=e
+                )
+
             return None
         except Exception as e:
             logger.error(f"Error retrieving node information: {e}")
+
+            # Log error
+            if self.log_client:
+                await self.log_client.log_error(
+                    message=f"Error retrieving node information",
+                    category="api",
+                    details={"endpoint": endpoint, "method": method, "node_id": self.node_id},
+                    exception=e
+                )
+
             return None
 
     async def verify_connection(self) -> bool:
@@ -91,12 +160,40 @@ class AccountDBClient:
             if node_info and 'owner_id' in node_info:
                 self.owner_id = node_info['owner_id']
                 logger.info(f"Connection verified successfully. Owner ID: {self.owner_id}")
+
+                # Log successful connection
+                if self.log_client:
+                    await self.log_client.log_auth(
+                        message=f"Connection to AccountDB verified successfully. Owner ID: {self.owner_id}",
+                        success=True,
+                        details={"owner_id": self.owner_id, "node_id": self.node_id}
+                    )
+
                 return True
             else:
                 logger.error("Failed to retrieve owner_id from node information")
+
+                # Log failed connection
+                if self.log_client:
+                    await self.log_client.log_auth(
+                        message="Failed to retrieve owner_id from node information",
+                        success=False,
+                        details={"node_id": self.node_id}
+                    )
+
                 return False
         except Exception as e:
             logger.error(f"Error verifying connection to AccountDB: {e}")
+
+            # Log error
+            if self.log_client:
+                await self.log_client.log_error(
+                    message=f"Error verifying connection to AccountDB",
+                    category="security",
+                    details={"node_id": self.node_id},
+                    exception=e
+                )
+
             return False
 
     async def send_heartbeat(self) -> bool:
@@ -106,36 +203,97 @@ class AccountDBClient:
         Returns:
             bool: True if the heartbeat is successful, False otherwise.
         """
+        endpoint = "/proxmox-nodes/heartbeat"
+        method = "POST"
+
         try:
             # Make sure we have a valid token
             if not self.access_token:
                 login_success = await self.login()
                 if not login_success:
                     logger.error("Failed to login to AccountDB")
+
+                    # Log authentication failure
+                    if self.log_client:
+                        await self.log_client.log_auth(
+                            message="Failed to login to AccountDB for heartbeat",
+                            success=False,
+                            details={"node_id": self.node_id}
+                        )
+
                     return False
+
+            # Log API call
+            if self.log_client:
+                await self.log_client.log_api_call(
+                    endpoint=endpoint,
+                    method=method,
+                    details={"node_id": self.node_id}
+                )
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"{self.base_url}/proxmox-nodes/heartbeat",
+                    f"{self.base_url}{endpoint}",
                     params={"node_id": self.node_id, "api_key": self.api_key},
                     headers=self.get_auth_headers(),
                     timeout=30.0,
                 )
                 response.raise_for_status()
                 logger.debug("Heartbeat sent successfully")
+
+                # Log successful API call
+                if self.log_client:
+                    await self.log_client.log_api_call(
+                        endpoint=endpoint,
+                        method=method,
+                        status_code=response.status_code,
+                        details={"node_id": self.node_id}
+                    )
+
                 return True
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 logger.warning("Authentication failed, trying to login again")
+
+                # Log authentication failure
+                if self.log_client:
+                    await self.log_client.log_auth(
+                        message="Authentication failed for heartbeat, trying to login again",
+                        success=False,
+                        details={"node_id": self.node_id, "status_code": e.response.status_code}
+                    )
+
                 # Token might be expired, try to login again
                 login_success = await self.login()
                 if login_success:
                     # Try heartbeat again with new token
                     return await self.send_heartbeat()
+
             logger.error(f"HTTP error sending heartbeat to AccountDB: {e}")
+
+            # Log error
+            if self.log_client:
+                await self.log_client.log_api_call(
+                    endpoint=endpoint,
+                    method=method,
+                    status_code=e.response.status_code if hasattr(e, 'response') else None,
+                    error=str(e),
+                    details={"node_id": self.node_id}
+                )
+
             return False
         except Exception as e:
             logger.error(f"Error sending heartbeat to AccountDB: {e}")
+
+            # Log error
+            if self.log_client:
+                await self.log_client.log_error(
+                    message=f"Error sending heartbeat to AccountDB",
+                    category="api",
+                    details={"endpoint": endpoint, "method": method, "node_id": self.node_id},
+                    exception=e
+                )
+
             return False
 
     async def get_vms(self) -> List[Dict[str, Any]]:
@@ -458,9 +616,11 @@ class AccountDBClient:
                         vm.get('name') != existing_vm.get('name') or
                         vm.get('status') != existing_vm.get('status') or
                         vm.get('cpu_cores') != existing_vm.get('cpu_cores') or
+                        vm.get('cpu_usage_percent') != existing_vm.get('cpu_usage_percent') or
                         vm.get('memory_mb') != existing_vm.get('memory_mb') or
                         vm.get('disk_gb') != existing_vm.get('disk_gb') or
-                        vm.get('ip_address') != existing_vm.get('ip_address')
+                        vm.get('ip_address') != existing_vm.get('ip_address') or
+                        vm.get('uptime_seconds') != existing_vm.get('uptime_seconds')
                     )
 
                     if needs_update:

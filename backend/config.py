@@ -37,6 +37,10 @@ class Config:
     API_PORT: int = int(os.getenv('API_PORT', '8080'))
     API_TOKEN: str = os.getenv('API_TOKEN')
     X_TOKEN: str = os.getenv('X_TOKEN')
+    SERVER_BASE_URL: str = os.getenv('SERVER_BASE_URL', '')
+
+    # Windows VM agent configuration
+    WINDOWS_VM_AGENT_DOWNLOAD_URL: str = os.getenv('WINDOWS_VM_AGENT_DOWNLOAD_URL', '')
 
     # CORS configuration
     CORS_ORIGINS: list = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:8084').split(',')
@@ -45,7 +49,7 @@ class Config:
     SIGNUPS_ENABLED: bool = os.getenv('SIGNUPS_ENABLED', 'true').lower() == 'true'
 
     # Logging configuration
-    LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
+    LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'DEBUG')
     LOG_FORMAT: str = os.getenv('LOG_FORMAT', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     LOG_FILE: str = os.getenv('LOG_FILE', 'logs/app.log')
     LOG_ROTATION: bool = os.getenv('LOG_ROTATION', 'true').lower() == 'true'
@@ -135,6 +139,8 @@ class Config:
         logger.info(f"  API_PORT: {cls.API_PORT}")
         logger.info(f"  API_TOKEN: {'*' * 8 if cls.API_TOKEN else 'Not set'}")
         logger.info(f"  X_TOKEN: {'*' * 8 if cls.X_TOKEN else 'Not set'}")
+        logger.info(f"  SERVER_BASE_URL: {cls.SERVER_BASE_URL or 'Not set (will be auto-detected)'}")
+        logger.info(f"  WINDOWS_VM_AGENT_DOWNLOAD_URL: {cls.WINDOWS_VM_AGENT_DOWNLOAD_URL or 'Not set (will use default)'}")
         logger.info(f"  CORS_ORIGINS: {cls.CORS_ORIGINS}")
         logger.info(f"  SIGNUPS_ENABLED: {cls.SIGNUPS_ENABLED}")
         logger.info(f"  LOG_LEVEL: {cls.LOG_LEVEL}")

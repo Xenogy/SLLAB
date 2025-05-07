@@ -22,6 +22,7 @@ interface DataTableProps<TData, TValue> {
   filterColumn?: string
   filterPlaceholder?: string
   showFilter?: boolean
+  customFilters?: React.ReactNode
 }
 
 export function DataTable<TData, TValue>({
@@ -30,6 +31,7 @@ export function DataTable<TData, TValue>({
   filterColumn = "acc_username",
   filterPlaceholder = "Filter...",
   showFilter = true,
+  customFilters,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -56,16 +58,23 @@ export function DataTable<TData, TValue>({
 
   return (
     <div>
-      {showFilter && actualFilterColumn && (
-        <div className="flex items-center py-4">
-          <Input
-            placeholder={filterPlaceholder}
-            value={(table.getColumn(actualFilterColumn)?.getFilterValue() as string) ?? ""}
-            onChange={(event) => table.getColumn(actualFilterColumn)?.setFilterValue(event.target.value)}
-            className="max-w-sm"
-          />
-        </div>
-      )}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between py-4 gap-4">
+        {showFilter && actualFilterColumn && (
+          <div className="flex items-center">
+            <Input
+              placeholder={filterPlaceholder}
+              value={(table.getColumn(actualFilterColumn)?.getFilterValue() as string) ?? ""}
+              onChange={(event) => table.getColumn(actualFilterColumn)?.setFilterValue(event.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+        )}
+        {customFilters && (
+          <div className="flex items-center">
+            {customFilters}
+          </div>
+        )}
+      </div>
       <div className="rounded-md border">
         <Table>
           <TableHeader>

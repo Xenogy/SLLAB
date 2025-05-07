@@ -1,0 +1,7 @@
+2023-05-01 12:00:00 INFO Starting bot service
+2023-05-01 12:01:15 INFO User logged in: user123
+2023-05-01 12:05:30 INFO Processing request
+2023-05-01 12:10:45 INFO User logged out: user123
+2023-05-01 12:15:00 INFO User logged in: testuser456
+2023-05-01 12:20:00 INFO User logged in: newuser789
+2023-05-01 12:25:00 INFO User logged in: finaltest123

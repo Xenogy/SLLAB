@@ -32,8 +32,10 @@ class VMBase(BaseModel):
     ip_address: Optional[str] = None
     status: str = "stopped"
     cpu_cores: Optional[int] = None
+    cpu_usage_percent: Optional[float] = None
     memory_mb: Optional[int] = None
     disk_gb: Optional[int] = None
+    uptime_seconds: Optional[int] = None
     proxmox_node_id: Optional[int] = None
     proxmox_node: Optional[str] = None  # For backward compatibility
     template_id: Optional[int] = None
@@ -211,6 +213,7 @@ async def create_vm(
             "ip_address": vm.ip_address,
             "status": vm.status,
             "cpu_cores": vm.cpu_cores,
+            "cpu_usage_percent": vm.cpu_usage_percent,
             "memory_mb": vm.memory_mb,
             "disk_gb": vm.disk_gb,
             "proxmox_node_id": vm.proxmox_node_id,
@@ -258,6 +261,7 @@ async def update_vm(
             "ip_address": vm.ip_address,
             "status": vm.status,
             "cpu_cores": vm.cpu_cores,
+            "cpu_usage_percent": vm.cpu_usage_percent,
             "memory_mb": vm.memory_mb,
             "disk_gb": vm.disk_gb,
             "proxmox_node_id": vm.proxmox_node_id,
@@ -353,9 +357,9 @@ async def update_vm_agent(
         # Create a cursor
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-        # Execute the query to verify the node and API key
+        # Execute the query to verify the node exists
         node_query = """
-            SELECT id, api_key
+            SELECT id
             FROM proxmox_nodes
             WHERE id = %s
         """
@@ -374,12 +378,19 @@ async def update_vm_agent(
             logger.info(f"No node found with id={node_id}")
             raise HTTPException(status_code=401, detail="Invalid API key or node not found")
 
-        node_result = dict(result)
-        stored_api_key = node_result['api_key']
+        # Verify API key using the settings repository
+        from db.repositories.settings import SettingsRepository
+        settings_repo = SettingsRepository(user_id=1, user_role="admin")  # Use admin role for verification
 
-        # Verify API key
-        if api_key != stored_api_key:
-            logger.info(f"API key mismatch for node_id={node_id}")
+        # Validate the API key
+        api_key_data = settings_repo.validate_api_key(
+            api_key=api_key,
+            key_type="proxmox_node",
+            resource_id=node_id
+        )
+
+        if not api_key_data:
+            logger.info(f"API key validation failed for node_id={node_id}")
             raise HTTPException(status_code=401, detail="Invalid API key or node not found")
 
         logger.info(f"API key verified for node_id={node_id}")
@@ -404,7 +415,7 @@ async def update_vm_agent(
 
         # Execute the query to check if VM exists
         vm_query = """
-            SELECT id, vmid, name, status, cpu_cores, memory_mb,
+            SELECT id, vmid, name, status, cpu_cores, cpu_usage_percent, memory_mb,
                 disk_gb, ip_address, proxmox_node_id, owner_id,
                 created_at, updated_at
             FROM vms
@@ -434,6 +445,7 @@ async def update_vm_agent(
                 "ip_address": vm.ip_address,
                 "status": vm.status,
                 "cpu_cores": vm.cpu_cores,
+                "cpu_usage_percent": vm.cpu_usage_percent,
                 "memory_mb": vm.memory_mb,
                 "disk_gb": vm.disk_gb,
                 "proxmox_node_id": node_id,  # Use the node_id from the query parameter
@@ -463,13 +475,13 @@ async def update_vm_agent(
             # Execute the query to create the VM
             create_query = """
                 INSERT INTO vms (
-                    vmid, name, ip_address, status, cpu_cores, memory_mb,
+                    vmid, name, ip_address, status, cpu_cores, cpu_usage_percent, memory_mb,
                     disk_gb, proxmox_node_id, template_id, notes, owner_id
                 ) VALUES (
-                    %(vmid)s, %(name)s, %(ip_address)s, %(status)s, %(cpu_cores)s, %(memory_mb)s,
+                    %(vmid)s, %(name)s, %(ip_address)s, %(status)s, %(cpu_cores)s, %(cpu_usage_percent)s, %(memory_mb)s,
                     %(disk_gb)s, %(proxmox_node_id)s, %(template_id)s, %(notes)s, %(owner_id)s
                 ) RETURNING
-                    id, vmid, name, ip_address, status, cpu_cores, memory_mb,
+                    id, vmid, name, ip_address, status, cpu_cores, cpu_usage_percent, memory_mb,
                     disk_gb, proxmox_node_id, template_id, notes, created_at, updated_at, owner_id
             """
             logger.info(f"Executing direct query: {create_query}")
@@ -532,6 +544,7 @@ async def update_vm_agent(
                 "ip_address": vm.ip_address,
                 "status": vm.status,
                 "cpu_cores": vm.cpu_cores,
+                "cpu_usage_percent": vm.cpu_usage_percent,
                 "memory_mb": vm.memory_mb,
                 "disk_gb": vm.disk_gb,
                 "proxmox_node_id": node_id,  # Use the node_id from the query parameter
@@ -566,6 +579,7 @@ async def update_vm_agent(
                     ip_address = COALESCE(%(ip_address)s, ip_address),
                     status = COALESCE(%(status)s, status),
                     cpu_cores = COALESCE(%(cpu_cores)s, cpu_cores),
+                    cpu_usage_percent = COALESCE(%(cpu_usage_percent)s, cpu_usage_percent),
                     memory_mb = COALESCE(%(memory_mb)s, memory_mb),
                     disk_gb = COALESCE(%(disk_gb)s, disk_gb),
                     proxmox_node_id = COALESCE(%(proxmox_node_id)s, proxmox_node_id),
@@ -574,7 +588,7 @@ async def update_vm_agent(
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %(id)s
                 RETURNING
-                    id, vmid, name, ip_address, status, cpu_cores, memory_mb,
+                    id, vmid, name, ip_address, status, cpu_cores, cpu_usage_percent, memory_mb,
                     disk_gb, proxmox_node_id, template_id, notes, created_at, updated_at, owner_id
             """
             # Add vm_id to vm_data

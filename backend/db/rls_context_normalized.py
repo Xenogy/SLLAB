@@ -32,7 +32,8 @@ def get_user_tables_with_rls() -> list:
         {"table": "hardware", "view": "hardware_with_rls"},
         {"table": "cards", "view": "cards_with_rls"},
         {"table": "vms", "view": "vms_with_rls"},
-        {"table": "proxmox_nodes", "view": "proxmox_nodes_with_rls"}
+        {"table": "proxmox_nodes", "view": "proxmox_nodes_with_rls"},
+        {"table": "logs", "view": "logs_with_rls"}
     ]
 
 def set_rls_context(conn: pg_connection, user_id: int, user_role: str) -> None:

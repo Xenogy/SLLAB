@@ -1,6 +1,8 @@
-# Virtual Machines Table
+# Virtual Machines (VMs) Table Documentation
 
-This document describes the `vms` table in the AccountDB database, which stores information about virtual machines managed through Proxmox.
+## Overview
+
+The `vms` table stores information about virtual machines managed through Proxmox. This table is a key component of the Proxmox integration feature, allowing users to manage and monitor their virtual machines through the AccountDB system.
 
 ## Table Schema
 
@@ -17,13 +19,62 @@ CREATE TABLE public.vms
     cpu_cores INTEGER,                                               -- Number of CPU cores
     memory_mb INTEGER,                                               -- Memory in MB
     disk_gb INTEGER,                                                 -- Disk size in GB
-    proxmox_node VARCHAR(100),                                       -- Proxmox node name
+    proxmox_node INTEGER NOT NULL,                                   -- Proxmox node ID (foreign key)
     template_id INTEGER,                                             -- Template ID if created from template
     notes TEXT,                                                      -- Additional notes
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,   -- Creation timestamp
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,   -- Update timestamp
-    owner_id INTEGER REFERENCES public.users(id)                     -- Owner ID for RLS
+    owner_id INTEGER REFERENCES public.users(id) NOT NULL            -- Owner ID for RLS
 );
+
+-- Unique constraint for vmid and proxmox_node combination
+ALTER TABLE public.vms ADD CONSTRAINT vms_vmid_node_unique UNIQUE (vmid, proxmox_node);
+
+-- Foreign key to proxmox_nodes table
+ALTER TABLE public.vms ADD CONSTRAINT vms_proxmox_node_fkey FOREIGN KEY (proxmox_node) REFERENCES public.proxmox_nodes(id);
+
+-- Check constraint for status
+ALTER TABLE public.vms ADD CONSTRAINT vms_status_check CHECK (status IN ('running', 'stopped', 'error'));
+```
+
+## Columns
+
+| Column Name   | Data Type | Nullable | Description                                |
+|---------------|-----------|----------|--------------------------------------------|
+| id            | SERIAL    | No       | Primary key                                |
+| vmid          | INTEGER   | No       | Proxmox VMID                               |
+| name          | VARCHAR   | No       | VM name                                    |
+| ip_address    | VARCHAR   | Yes      | IP address (supports IPv4 and IPv6)        |
+| status        | VARCHAR   | No       | Status (running, stopped, error)           |
+| cpu_cores     | INTEGER   | Yes      | Number of CPU cores                        |
+| memory_mb     | INTEGER   | Yes      | Memory in MB                               |
+| disk_gb       | INTEGER   | Yes      | Disk size in GB                            |
+| proxmox_node  | INTEGER   | No       | Proxmox node ID (foreign key)              |
+| template_id   | INTEGER   | Yes      | Template ID if created from template       |
+| notes         | TEXT      | Yes      | Additional notes                           |
+| created_at    | TIMESTAMP | No       | Creation timestamp                         |
+| updated_at    | TIMESTAMP | No       | Update timestamp                           |
+| owner_id      | INTEGER   | No       | ID of the user who owns the VM             |
+
+## Constraints
+
+- Primary Key: `id`
+- Foreign Key: `owner_id` references `users(id)`
+- Foreign Key: `proxmox_node` references `proxmox_nodes(id)`
+- Check: `status IN ('running', 'stopped', 'error')`
+- Unique: `(vmid, proxmox_node)` - A VM ID must be unique within a Proxmox node
+
+## Indexes
+
+The following indexes are created to improve query performance:
+
+```sql
+CREATE INDEX vms_vmid_idx ON public.vms(vmid);
+CREATE INDEX vms_name_idx ON public.vms(name);
+CREATE INDEX vms_ip_address_idx ON public.vms(ip_address);
+CREATE INDEX vms_status_idx ON public.vms(status);
+CREATE INDEX vms_owner_id_idx ON public.vms(owner_id);
+CREATE INDEX vms_proxmox_node_idx ON public.vms(proxmox_node);
 ```
 
 ## Row-Level Security (RLS)
@@ -74,5 +125,51 @@ with rls_context(conn, user_id, user_role):
 
 ## Relationships
 
-- **One-to-Many**: A user can own multiple virtual machines.
-- **Many-to-One**: Multiple virtual machines can be created from the same template.
+- **Many-to-One**: A VM belongs to one user (owner)
+- **Many-to-One**: A VM belongs to one Proxmox node
+- **One-to-Many**: A VM can have multiple related records in other tables (e.g., monitoring data)
+
+## API Integration
+
+The `vms` table is accessed through the following API endpoints:
+
+- `GET /vms`: Get a list of VMs (filtered by RLS)
+- `GET /vms/{id}`: Get a specific VM by ID
+- `POST /vms`: Create a new VM
+- `PUT /vms/{id}`: Update an existing VM
+- `DELETE /vms/{id}`: Delete a VM
+- `GET /vms/proxmox/{node_id}`: Get VMs for a specific Proxmox node
+
+## Proxmox Host Agent Integration
+
+The Proxmox Host Agent synchronizes VM information from Proxmox to the `vms` table. The agent:
+
+1. Retrieves VM information from Proxmox
+2. Formats the data to match the `vms` table structure
+3. Creates or updates records in the `vms` table
+4. Updates VM status and resource information
+
+## Monitoring and Statistics
+
+The `vms` table is used for monitoring and statistics:
+
+- VM status monitoring
+- Resource usage tracking
+- VM creation and deletion auditing
+- Owner activity monitoring
+
+## Security Considerations
+
+- Access to the `vms` table is controlled by Row-Level Security
+- VM operations are logged for audit purposes
+- VM creation is restricted by user permissions
+- Sensitive VM information is protected
+
+## Troubleshooting
+
+Common issues with the `vms` table:
+
+1. **VM Not Visible**: Check that the VM's `owner_id` is correctly set to the user's ID
+2. **Duplicate VM Error**: Ensure that the combination of `vmid` and `proxmox_node` is unique
+3. **Status Not Updating**: Verify that the Proxmox Host Agent is running and properly configured
+4. **RLS Not Working**: Check that the database connection is using the correct RLS context

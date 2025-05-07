@@ -1,0 +1,4 @@
+include windows_vm_agent/config.yaml
+include windows_vm_agent/README.md
+include windows_vm_agent/requirements.txt
+recursive-include windows_vm_agent/action_scripts *.ps1

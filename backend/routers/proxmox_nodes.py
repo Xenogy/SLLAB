@@ -43,7 +43,6 @@ class ProxmoxNodeResponse(ProxmoxNodeBase):
     """Response model for Proxmox nodes."""
     id: int
     status: str
-    api_key: str
     whitelist: List[int] = Field(default_factory=list)
     last_seen: Optional[datetime] = None
     created_at: datetime
@@ -155,16 +154,12 @@ async def create_proxmox_node(
     proxmox_node_repo = ProxmoxNodeRepository(user_id=current_user["id"], user_role=current_user["role"])
 
     try:
-        # Generate API key
-        api_key = generate_api_key()
-
         # Prepare node data
         node_data = {
             "name": node.name,
             "hostname": node.hostname,
             "port": node.port,
             "status": "disconnected",  # Initial status
-            "api_key": api_key,
             "owner_id": current_user["id"]  # Set the owner_id to the current user's ID
         }
 
@@ -173,6 +168,26 @@ async def create_proxmox_node(
 
         if not created_node:
             raise HTTPException(status_code=500, detail="Failed to create Proxmox node")
+
+        # Generate API key for the node using the settings repository
+        from db.repositories.settings import SettingsRepository
+        settings_repo = SettingsRepository(user_id=current_user["id"], user_role=current_user["role"])
+
+        # Generate a random API key
+        api_key = generate_api_key()
+
+        # Create the API key for the node
+        api_key_data = settings_repo.create_api_key(
+            user_id=current_user["id"],
+            key_name=f"Proxmox Node {node.name}",
+            api_key=api_key,
+            scopes=["read", "write"],
+            key_type="proxmox_node",
+            resource_id=created_node["id"]
+        )
+
+        # Log the API key (in a real system, this would be sent to the node)
+        logger.info(f"Created API key for Proxmox node {node.name}: {api_key}")
 
         return created_node
 
@@ -254,7 +269,7 @@ async def delete_proxmox_node(
         logger.error(f"Error deleting Proxmox node: {e}")
         raise HTTPException(status_code=500, detail=f"Error deleting Proxmox node: {str(e)}")
 
-@router.post("/{node_id}/regenerate-api-key", response_model=ProxmoxNodeResponse)
+@router.post("/{node_id}/regenerate-api-key", response_model=dict)
 async def regenerate_api_key(
     node_id: int,
     current_user: dict = Depends(get_current_user)
@@ -273,21 +288,29 @@ async def regenerate_api_key(
         if not existing_node:
             raise HTTPException(status_code=404, detail="Proxmox node not found or you don't have access")
 
-        # Generate new API key
+        # Generate API key for the node using the settings repository
+        from db.repositories.settings import SettingsRepository
+        settings_repo = SettingsRepository(user_id=current_user["id"], user_role=current_user["role"])
+
+        # Generate a random API key
         api_key = generate_api_key()
 
-        # Prepare node data for update
-        node_data = {
-            "api_key": api_key
-        }
+        # Regenerate the API key for the node
+        api_key_data = settings_repo.regenerate_api_key_for_resource(
+            key_type="proxmox_node",
+            resource_id=node_id,
+            api_key=api_key
+        )
 
-        # Update the node
-        updated_node = proxmox_node_repo.update_node(node_id, node_data)
-
-        if not updated_node:
+        if not api_key_data:
             raise HTTPException(status_code=500, detail="Failed to regenerate API key")
 
-        return updated_node
+        # Return the API key (only shown once)
+        return {
+            "node_id": node_id,
+            "api_key": api_key,
+            "message": "API key regenerated successfully"
+        }
 
     except HTTPException:
         raise
@@ -308,18 +331,36 @@ async def verify_node_connection(
     proxmox_node_repo = ProxmoxNodeRepository()
 
     try:
+        # Ensure node_id is an integer
+        try:
+            node_id_int = int(node_id)
+            logger.info(f"Verifying connection for node_id={node_id_int}")
+        except (ValueError, TypeError):
+            logger.error(f"Invalid node_id: {node_id}")
+            raise HTTPException(status_code=400, detail="Invalid node_id parameter")
+
         # Get the node by ID
-        node = proxmox_node_repo.get_node_by_id(node_id)
+        node = proxmox_node_repo.get_node_by_id(node_id_int)
 
         if not node:
             raise HTTPException(status_code=404, detail="Proxmox node not found")
 
-        # Verify API key
-        if api_key != node["api_key"]:
+        # Verify API key using the settings repository
+        from db.repositories.settings import SettingsRepository
+        settings_repo = SettingsRepository(user_id=1, user_role="admin")  # Use admin role for verification
+
+        # Validate the API key
+        api_key_data = settings_repo.validate_api_key(
+            api_key=api_key,
+            key_type="proxmox_node",
+            resource_id=node_id_int
+        )
+
+        if not api_key_data:
             raise HTTPException(status_code=401, detail="Invalid API key")
 
         # Update the node's status and last_seen
-        success = proxmox_node_repo.update_node_status(node_id, "connected")
+        success = proxmox_node_repo.update_node_status(node_id_int, "connected")
 
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update node status")
@@ -327,7 +368,7 @@ async def verify_node_connection(
         return {
             "success": True,
             "message": "Connection verified successfully",
-            "node_id": node_id,
+            "node_id": node_id_int,
             "status": "connected",
             "owner_id": node["owner_id"]
         }
@@ -366,8 +407,16 @@ async def node_heartbeat(
     else:
         raise HTTPException(status_code=400, detail="Missing required parameters: node_id and api_key")
 
-    # Validate input parameters
-    if not actual_node_id or not isinstance(actual_node_id, int):
+    # Validate input parameters and ensure node_id is an integer
+    try:
+        node_id_int = int(actual_node_id) if actual_node_id is not None else None
+        logger.info(f"Processing heartbeat for node_id={node_id_int}")
+
+        if not node_id_int:
+            logger.error(f"Invalid node_id: {actual_node_id}")
+            raise HTTPException(status_code=400, detail="Invalid node_id parameter")
+    except (ValueError, TypeError):
+        logger.error(f"Invalid node_id: {actual_node_id}")
         raise HTTPException(status_code=400, detail="Invalid node_id parameter")
 
     if not actual_api_key:
@@ -378,17 +427,27 @@ async def node_heartbeat(
 
     try:
         # Get the node by ID
-        node = proxmox_node_repo.get_node_by_id(actual_node_id)
+        node = proxmox_node_repo.get_node_by_id(node_id_int)
 
         if not node:
             raise HTTPException(status_code=404, detail="Proxmox node not found")
 
-        # Verify API key
-        if actual_api_key != node["api_key"]:
+        # Verify API key using the settings repository
+        from db.repositories.settings import SettingsRepository
+        settings_repo = SettingsRepository(user_id=1, user_role="admin")  # Use admin role for verification
+
+        # Validate the API key
+        api_key_data = settings_repo.validate_api_key(
+            api_key=actual_api_key,
+            key_type="proxmox_node",
+            resource_id=node_id_int
+        )
+
+        if not api_key_data:
             raise HTTPException(status_code=401, detail="Invalid API key")
 
         # Update the node's status and last_seen
-        success = proxmox_node_repo.update_node_status(actual_node_id, "connected")
+        success = proxmox_node_repo.update_node_status(node_id_int, "connected")
 
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update node status")
@@ -451,8 +510,18 @@ async def sync_vms(
         if not node:
             raise HTTPException(status_code=404, detail="Proxmox node not found")
 
-        # Verify API key
-        if actual_api_key != node["api_key"]:
+        # Verify API key using the settings repository
+        from db.repositories.settings import SettingsRepository
+        settings_repo = SettingsRepository(user_id=1, user_role="admin")  # Use admin role for verification
+
+        # Validate the API key
+        api_key_data = settings_repo.validate_api_key(
+            api_key=actual_api_key,
+            key_type="proxmox_node",
+            resource_id=actual_node_id
+        )
+
+        if not api_key_data:
             raise HTTPException(status_code=401, detail="Invalid API key")
 
         # Stats for the response
@@ -484,10 +553,15 @@ async def sync_vms(
                         "name": vm.get("name", f"VM-{vmid}"),
                         "status": vm.get("status", "unknown"),
                         "cpu_cores": vm.get("cpu_cores"),
+                        "cpu_usage_percent": vm.get("cpu_usage_percent"),
                         "memory_mb": vm.get("memory_mb"),
                         "disk_gb": vm.get("disk_gb"),
-                        "ip_address": vm.get("ip_address")
+                        "ip_address": vm.get("ip_address"),
+                        "uptime_seconds": vm.get("uptime_seconds")
                     }
+
+                    # Log the CPU usage for debugging
+                    logger.info(f"Updating VM {vmid} with CPU usage: {vm.get('cpu_usage_percent')}, cores: {vm.get('cpu_cores')}")
 
                     # Update the VM
                     vm_repo.update_vm(existing_vm["id"], vm_data)
@@ -499,12 +573,17 @@ async def sync_vms(
                         "name": vm.get("name", f"VM-{vmid}"),
                         "status": vm.get("status", "unknown"),
                         "cpu_cores": vm.get("cpu_cores"),
+                        "cpu_usage_percent": vm.get("cpu_usage_percent"),
                         "memory_mb": vm.get("memory_mb"),
                         "disk_gb": vm.get("disk_gb"),
                         "ip_address": vm.get("ip_address"),
+                        "uptime_seconds": vm.get("uptime_seconds"),
                         "proxmox_node_id": actual_node_id,
                         "owner_id": node["owner_id"]
                     }
+
+                    # Log the CPU usage for debugging
+                    logger.info(f"Creating VM {vmid} with CPU usage: {vm.get('cpu_usage_percent')}, cores: {vm.get('cpu_cores')}")
 
                     # Create the VM
                     vm_repo.create_vm(vm_data)
@@ -543,26 +622,56 @@ async def get_vmid_whitelist(
     proxmox_node_repo = ProxmoxNodeRepository(user_id=current_user["id"], user_role=current_user["role"])
 
     try:
+        # Log the request for debugging
+        logger.info(f"Whitelist request for node_id={node_id} from user_id={current_user['id']}, role={current_user['role']}")
+
         # Get the node by ID
         node = proxmox_node_repo.get_node_by_id(node_id)
 
+        # Log the full node data for debugging
+        logger.info(f"Node data from database: {node}")
+
         if not node:
+            logger.error(f"Node not found for node_id={node_id}")
             raise HTTPException(status_code=404, detail="Proxmox node not found or you don't have access")
 
         # Get the whitelist from the node
         whitelist = node.get("whitelist", [])
 
-        return {
+        # Log the whitelist for debugging
+        logger.info(f"Retrieved whitelist for node {node_id}: {whitelist}")
+        logger.info(f"Whitelist type: {type(whitelist)}")
+
+        # Ensure whitelist is a list
+        if whitelist is None:
+            whitelist = []
+        elif not isinstance(whitelist, list):
+            logger.warning(f"Whitelist is not a list, converting: {whitelist}")
+            try:
+                whitelist = list(whitelist)
+            except Exception as e:
+                logger.error(f"Error converting whitelist to list: {e}")
+                whitelist = []
+
+        response = {
             "node_id": node_id,
             "vmids": whitelist,
             "success": True,
             "message": "VMID whitelist retrieved successfully"
         }
 
+        # Log the response for debugging
+        logger.info(f"Sending whitelist response: {response}")
+
+        return response
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error retrieving VMID whitelist: {e}")
+        logger.error(f"Error type: {type(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error retrieving VMID whitelist: {str(e)}")
 
 class AgentWhitelistRequest(BaseModel):
@@ -584,8 +693,16 @@ async def get_agent_proxmox_node(
     Get a specific Proxmox node by ID for the agent.
     This endpoint is called by the Proxmox host agent to get node information.
     """
-    # Validate input parameters
-    if not node_id or not isinstance(node_id, int):
+    # Validate input parameters and ensure node_id is an integer
+    try:
+        node_id_int = int(node_id)
+        logger.info(f"Getting agent node for node_id={node_id_int}")
+
+        if not node_id_int:
+            logger.error(f"Invalid node_id: {node_id}")
+            raise HTTPException(status_code=400, detail="Invalid node_id parameter")
+    except (ValueError, TypeError):
+        logger.error(f"Invalid node_id: {node_id}")
         raise HTTPException(status_code=400, detail="Invalid node_id parameter")
 
     if not api_key:
@@ -596,17 +713,31 @@ async def get_agent_proxmox_node(
 
     try:
         # Get the node by ID, bypassing RLS since this is an agent endpoint
-        node = proxmox_node_repo.get_node_by_id(node_id, bypass_rls=True)
+        node = proxmox_node_repo.get_node_by_id(node_id_int, bypass_rls=True)
 
         if not node:
             raise HTTPException(status_code=404, detail="Proxmox node not found")
 
-        # Verify API key
-        if api_key != node["api_key"]:
+        # Verify API key using the settings repository
+        from db.repositories.settings import SettingsRepository
+        settings_repo = SettingsRepository(user_id=1, user_role="admin")  # Use admin role for verification
+
+        # Validate the API key
+        api_key_data = settings_repo.validate_api_key(
+            api_key=api_key,
+            key_type="proxmox_node",
+            resource_id=node_id_int
+        )
+
+        if not api_key_data:
             raise HTTPException(status_code=401, detail="Invalid API key")
 
         # Update the node's status and last_seen
-        proxmox_node_repo.update_node_status(node_id, "connected")
+        success = proxmox_node_repo.update_node_status(node_id_int, "connected")
+
+        if not success:
+            logger.warning(f"Failed to update status for node_id={node_id_int}")
+            # Continue anyway since this is not critical
 
         return node
 
@@ -639,8 +770,16 @@ async def get_agent_vms(
     Get all VMs for a specific Proxmox node for the agent.
     This endpoint is called by the Proxmox host agent to get VMs.
     """
-    # Validate input parameters
-    if not node_id or not isinstance(node_id, int):
+    # Validate input parameters and ensure node_id is an integer
+    try:
+        node_id_int = int(node_id)
+        logger.info(f"Getting agent VMs for node_id={node_id_int}")
+
+        if not node_id_int:
+            logger.error(f"Invalid node_id: {node_id}")
+            raise HTTPException(status_code=400, detail="Invalid node_id parameter")
+    except (ValueError, TypeError):
+        logger.error(f"Invalid node_id: {node_id}")
         raise HTTPException(status_code=400, detail="Invalid node_id parameter")
 
     if not api_key:
@@ -651,7 +790,7 @@ async def get_agent_vms(
 
     try:
         # Get agent VMs using the repository
-        result = proxmox_node_repo.get_agent_vms(node_id, api_key)
+        result = proxmox_node_repo.get_agent_vms(node_id_int, api_key)
 
         if not result:
             raise HTTPException(status_code=401, detail="Invalid API key or node not found")
@@ -685,8 +824,16 @@ async def get_agent_vmid_whitelist(
     else:
         raise HTTPException(status_code=400, detail="Missing required parameter: api_key")
 
-    # Validate input parameters
-    if not node_id or not isinstance(node_id, int):
+    # Validate input parameters and ensure node_id is an integer
+    try:
+        node_id_int = int(node_id)
+        logger.info(f"Getting agent whitelist for node_id={node_id_int}")
+
+        if not node_id_int:
+            logger.error(f"Invalid node_id: {node_id}")
+            raise HTTPException(status_code=400, detail="Invalid node_id parameter")
+    except (ValueError, TypeError):
+        logger.error(f"Invalid node_id: {node_id}")
         raise HTTPException(status_code=400, detail="Invalid node_id parameter")
 
     if not actual_api_key:
@@ -697,13 +844,13 @@ async def get_agent_vmid_whitelist(
 
     try:
         # Get agent whitelist using the repository
-        result = proxmox_node_repo.get_agent_whitelist(node_id, actual_api_key)
+        result = proxmox_node_repo.get_agent_whitelist(node_id_int, actual_api_key)
 
         if not result:
             raise HTTPException(status_code=401, detail="Invalid API key or node not found")
 
         return {
-            "node_id": node_id,
+            "node_id": node_id_int,
             "vmids": result.get("whitelist", []),
             "success": True,
             "message": "VMID whitelist retrieved successfully"
@@ -797,7 +944,7 @@ async def set_vmid_whitelist(
                 "node_id": whitelist.node_id,
                 "vmids": whitelist.vmids,
                 "success": True,
-                "message": "VMID whitelist updated successfully and placeholder VMs created. VM data will be updated in the background."
+                "message": "VMID whitelist updated successfully and placeholder VMs created. Make sure the Proxmox host agent is running on your Proxmox server to update VM data."
             }
 
         except HTTPException:
@@ -850,7 +997,7 @@ async def sync_node_vms(
 
             return {
                 "success": True,
-                "message": f"VM synchronization for node {node_name} has been scheduled. VM data will be updated in the background."
+                "message": f"Placeholder VM records for node {node_name} have been created. Make sure the Proxmox host agent is running on your Proxmox server to update VM data with actual information."
             }
 
         except HTTPException:
@@ -863,7 +1010,11 @@ async def sync_node_vms(
 
 async def sync_node_vms_task(node_id: int, node_name: str, hostname: str, port: int, owner_id: int):
     """
-    Background task to fetch VM data from Proxmox and update the database.
+    Background task to create placeholder VM records for whitelisted VMIDs.
+
+    Instead of trying to connect to Proxmox directly, this function now only creates
+    placeholder records in the database for whitelisted VMIDs. The actual VM data
+    will be updated by the Proxmox host agent when it syncs.
 
     Args:
         node_id: Proxmox node ID
@@ -872,7 +1023,7 @@ async def sync_node_vms_task(node_id: int, node_name: str, hostname: str, port: 
         port: Proxmox port
         owner_id: Owner ID
     """
-    logger.info(f"Starting VM synchronization for node {node_name} ({hostname}:{port})")
+    logger.info(f"Starting VM placeholder creation for node {node_name} ({hostname}:{port})")
 
     try:
         # Connect to the database
@@ -890,134 +1041,64 @@ async def sync_node_vms_task(node_id: int, node_name: str, hostname: str, port: 
             whitelist = whitelist_result[0] if whitelist_result and whitelist_result[0] else []
 
             if not whitelist:
-                logger.info(f"No whitelist found for node {node_name}, skipping synchronization")
+                logger.info(f"No whitelist found for node {node_name}, skipping placeholder creation")
                 return
 
-            # We don't store credentials in the database anymore
-            # The Proxmox host agent should use its own credentials from the .env file
-            # For the backend sync, we'll use dummy credentials since we can't actually connect
-            username = "dummy_user"
-            password = "dummy_password"
-            realm = "pam"
-
-            logger.info("Using dummy credentials for Proxmox connection attempt")
-            logger.info("Note: Actual synchronization should be done by the Proxmox host agent")
-
-            # Create a Proxmox client
-            client = ProxmoxClient(hostname=hostname, port=port, verify_ssl=False)
-
-            # Login to Proxmox
-            logger.info(f"Logging in to Proxmox node {node_name} as {username}@{realm}")
-            login_success = await client.login(username=username, password=password, realm=realm)
-            if not login_success:
-                logger.error(f"Failed to login to Proxmox node {node_name}")
-                return
-
-            # Get nodes from Proxmox
-            proxmox_nodes = await client.get_nodes()
-
-            # Get VMs from all Proxmox nodes
-            vms = []
-            for proxmox_node in proxmox_nodes:
-                proxmox_node_name = proxmox_node.get("node")
-                if proxmox_node_name:
-                    logger.info(f"Getting VMs from Proxmox node {proxmox_node_name}")
-                    node_vms = await client.get_vms(node=proxmox_node_name)
-                    vms.extend(node_vms)
-
-            # Filter VMs by whitelist
-            whitelisted_vms = [vm for vm in vms if vm.get("vmid") in whitelist]
+            logger.info(f"Creating placeholder VM records for {len(whitelist)} whitelisted VMIDs")
 
             # Stats for logging
             stats = {
-                "total": len(whitelisted_vms),
-                "updated": 0,
+                "total": len(whitelist),
+                "created": 0,
+                "skipped": 0,
                 "errors": 0
             }
 
-            # Update each VM in the database
-            for vm in whitelisted_vms:
+            # Create placeholder records for each VMID in the whitelist
+            for vmid in whitelist:
                 try:
-                    vmid = vm.get("vmid")
-
-                    # Map Proxmox status to our status format
-                    status = "unknown"
-                    if "status" in vm:
-                        if vm["status"] == "running":
-                            status = "running"
-                        elif vm["status"] == "stopped":
-                            status = "stopped"
-
-                    # Get VM details
-                    name = vm.get("name", f"VM-{vmid}")
-                    cpu_cores = vm.get("cpu_cores")
-                    memory_mb = vm.get("memory_mb")
-                    disk_gb = vm.get("disk_gb")
-                    ip_address = vm.get("ip_address")
-
-                    # Check if VM exists in the database
+                    # Check if VM already exists in the database
                     check_vm_query = """
                         SELECT v.id FROM vms v
-                        JOIN proxmox_nodes pn ON v.proxmox_node_id = pn.id
-                        WHERE v.vmid = %s AND pn.name = %s
+                        WHERE v.vmid = %s AND v.proxmox_node_id = %s
                     """
-                    cursor.execute(check_vm_query, (vmid, node_name))
+                    cursor.execute(check_vm_query, (vmid, node_id))
                     vm_result = cursor.fetchone()
 
                     if vm_result:
-                        # Update existing VM
-                        vm_id = vm_result[0]
-                        update_query = """
-                            UPDATE vms
-                            SET
-                                name = %s,
-                                status = %s,
-                                cpu_cores = %s,
-                                memory_mb = %s,
-                                disk_gb = %s,
-                                ip_address = %s,
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE id = %s
-                        """
-                        cursor.execute(update_query, (
-                            name,
-                            status,
-                            cpu_cores,
-                            memory_mb,
-                            disk_gb,
-                            ip_address,
-                            vm_id
-                        ))
+                        # VM already exists, skip
+                        logger.debug(f"VM with VMID {vmid} already exists, skipping")
+                        stats["skipped"] += 1
                     else:
-                        # Create new VM
+                        # Create placeholder VM record
                         insert_query = """
                             INSERT INTO vms (
-                                vmid, name, status, cpu_cores, memory_mb,
-                                disk_gb, ip_address, proxmox_node_id, owner_id
+                                vmid, name, status, proxmox_node_id, owner_id
                             ) VALUES (
-                                %s, %s, %s, %s, %s, %s, %s, %s, %s
+                                %s, %s, %s, %s, %s
                             )
                         """
+                        vm_name = f"VM-{vmid}"
                         cursor.execute(insert_query, (
                             vmid,
-                            name,
-                            status,
-                            cpu_cores,
-                            memory_mb,
-                            disk_gb,
-                            ip_address,
-                            node_id,  # Use node_id instead of node_name
+                            vm_name,
+                            "unknown",  # Status will be updated by the agent
+                            node_id,
                             owner_id
                         ))
-
-                    stats["updated"] += 1
+                        logger.info(f"Created placeholder VM record for VMID {vmid}")
+                        stats["created"] += 1
 
                 except Exception as e:
-                    logger.error(f"Error updating VM {vm.get('vmid')}: {e}")
+                    logger.error(f"Error creating placeholder for VMID {vmid}: {e}")
                     stats["errors"] += 1
 
             conn.commit()
-            logger.info(f"VM synchronization completed for node {node_name}: {stats}")
+            logger.info(f"Placeholder creation completed: {stats}")
+
+            # Log a message about the Proxmox host agent
+            logger.info("Placeholder records created. Actual VM data will be updated by the Proxmox host agent.")
+            logger.info(f"Make sure the Proxmox host agent is configured and running on {hostname}:{port}")
 
     except Exception as e:
-        logger.error(f"Error during VM synchronization for node {node_name}: {e}")
+        logger.error(f"Error during placeholder creation for node {node_name}: {e}")

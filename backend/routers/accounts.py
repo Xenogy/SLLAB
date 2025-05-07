@@ -1171,6 +1171,73 @@ async def _list_accounts(params: AccountListParams, current_user):
             filter_perm_lock=params.filter_perm_lock
         )
 
+        # If we have no accounts but total > 0, we need to fetch the accounts directly
+        if not result["accounts"] and result["total"] > 0:
+            try:
+                # Build filter conditions
+                condition = "1=1"
+                query_params = []
+
+                if params.filter_prime is not None:
+                    condition += " AND prime = %s"
+                    query_params.append(params.filter_prime)
+
+                if params.filter_lock is not None:
+                    condition += " AND lock = %s"
+                    query_params.append(params.filter_lock)
+
+                if params.filter_perm_lock is not None:
+                    condition += " AND perm_lock = %s"
+                    query_params.append(params.filter_perm_lock)
+
+                # Add search condition if provided
+                if params.search:
+                    search_columns = ["acc_id", "acc_username", "acc_email_address"]
+                    search_condition = " OR ".join([f"{column} ILIKE %s" for column in search_columns])
+                    condition += f" AND ({search_condition})"
+                    search_term = f"%{params.search}%"
+                    query_params.extend([search_term] * len(search_columns))
+
+                # Validate sort_by field
+                valid_sort_fields = [
+                    "acc_id", "acc_username", "acc_email_address",
+                    "prime", "lock", "perm_lock", "acc_created_at"
+                ]
+
+                sort_by = params.sort_by if params.sort_by in valid_sort_fields else "acc_id"
+                sort_order = params.sort_order.lower() if params.sort_order.lower() in ["asc", "desc"] else "asc"
+
+                # Fetch accounts directly with a raw query
+                query = f"""
+                SELECT acc_id, acc_username, acc_email_address, prime, lock, perm_lock, acc_created_at
+                FROM accounts
+                WHERE {condition}
+                ORDER BY {sort_by} {sort_order}
+                LIMIT {params.limit} OFFSET {params.offset}
+                """
+
+                # Use user-specific database connection with RLS
+                with get_user_db_connection(user_id=current_user["id"], user_role=current_user["role"]) as user_conn:
+                    cursor = user_conn.cursor()
+                    cursor.execute(query, tuple(query_params) if query_params else None)
+
+                    # Get column names
+                    columns = [desc[0] for desc in cursor.description]
+
+                    # Fetch all rows
+                    rows = cursor.fetchall()
+
+                    # Convert rows to dictionaries
+                    accounts = []
+                    for row in rows:
+                        account = dict(zip(columns, row))
+                        accounts.append(account)
+
+                    # Update the result
+                    result["accounts"] = accounts
+            except Exception as e:
+                logger.error(f"Error fetching accounts directly: {e}")
+
         return result
 
     except Exception as e:

@@ -76,6 +76,12 @@ class DatabaseAccess:
 
             cursor = conn.cursor()
             try:
+                # Log the parameters for debugging
+                logger.debug(f"Execute query parameters: {params}")
+                if params:
+                    for i, param in enumerate(params):
+                        logger.debug(f"  Param {i}: {param} (type: {type(param)})")
+
                 # Use query analyzer to track query performance
                 with query_analyzer(query, params):
                     cursor.execute(query, params or ())
@@ -90,6 +96,9 @@ class DatabaseAccess:
                 logger.error(f"Error executing query: {e}")
                 logger.debug(f"Query: {query}")
                 logger.debug(f"Params: {params}")
+                if params:
+                    for i, param in enumerate(params):
+                        logger.debug(f"  Param {i}: {param} (type: {type(param)})")
                 return []
             finally:
                 cursor.close()
@@ -136,6 +145,9 @@ class DatabaseAccess:
                 logger.error(f"Error executing command: {e}")
                 logger.debug(f"Query: {query}")
                 logger.debug(f"Params: {params}")
+                if params:
+                    for i, param in enumerate(params):
+                        logger.debug(f"  Param {i}: {param} (type: {type(param)})")
                 conn.rollback()
                 return 0
             finally:

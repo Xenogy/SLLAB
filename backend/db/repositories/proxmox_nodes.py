@@ -26,7 +26,7 @@ class ProxmoxNodeRepository(BaseRepository):
         self.table_name = "proxmox_nodes"
         self.id_column = "id"
         self.default_columns = """
-            id, name, hostname, port, status, api_key, last_seen,
+            id, name, hostname, port, status, whitelist, last_seen,
             created_at, updated_at, owner_id
         """
         self.default_order_by = "id DESC"
@@ -105,16 +105,26 @@ class ProxmoxNodeRepository(BaseRepository):
             Optional[Dict[str, Any]]: A dictionary with the node or None if not found.
         """
         try:
+            # Validate node_id is a valid integer
+            try:
+                node_id_int = int(node_id)
+                if str(node_id_int) != str(node_id):
+                    logger.error(f"Invalid node_id: {node_id} (not a valid integer)")
+                    return None
+            except (ValueError, TypeError):
+                logger.error(f"Invalid node_id: {node_id} (not a valid integer)")
+                return None
+
             # Disable cache for this query to avoid serialization issues
             from ..query_cache import cache_context
 
-            logger.info(f"get_node_by_id called with node_id={node_id}, bypass_rls={bypass_rls}")
+            logger.info(f"get_node_by_id called with node_id={node_id_int}, bypass_rls={bypass_rls}")
 
             if bypass_rls:
                 # Use direct SQL query to bypass RLS
                 query = f"""
                     SELECT
-                        id, name, hostname, port, status, api_key, whitelist,
+                        id, name, hostname, port, status, whitelist,
                         last_seen, created_at, updated_at, owner_id
                     FROM {self.table_name}
                     WHERE {self.id_column} = %s
@@ -142,8 +152,8 @@ class ProxmoxNodeRepository(BaseRepository):
                     try:
                         cursor = conn.cursor()
                         try:
-                            logger.info(f"Executing query: {query} with params: {(node_id,)}")
-                            cursor.execute(query, (node_id,))
+                            logger.info(f"Executing query: {query} with params: {(node_id_int,)}")
+                            cursor.execute(query, (node_id_int,))
                             logger.info("Query executed successfully")
 
                             if not cursor.description:
@@ -175,9 +185,9 @@ class ProxmoxNodeRepository(BaseRepository):
                     return None
             else:
                 # Execute query with cache disabled
-                logger.info(f"Using get_by_id with node_id={node_id}")
+                logger.info(f"Using get_by_id with node_id={node_id_int}")
                 with cache_context(enable=False):
-                    result = self.get_by_id(node_id)
+                    result = self.get_by_id(node_id_int)
                     logger.info(f"get_by_id result: {result}")
                     return result
         except Exception as e:
@@ -236,11 +246,21 @@ class ProxmoxNodeRepository(BaseRepository):
             Optional[Dict[str, Any]]: A dictionary with VMs or None if authentication failed.
         """
         try:
-            logger.info(f"Getting agent VMs for node_id={node_id}")
+            # Validate node_id is a valid integer
+            try:
+                node_id_int = int(node_id)
+                if str(node_id_int) != str(node_id):
+                    logger.error(f"Invalid node_id: {node_id} (not a valid integer)")
+                    return None
+            except (ValueError, TypeError):
+                logger.error(f"Invalid node_id: {node_id} (not a valid integer)")
+                return None
 
-            # First, verify the node and API key
+            logger.info(f"Getting agent VMs for node_id={node_id_int}")
+
+            # First, verify the node exists
             node_query = """
-                SELECT id, api_key
+                SELECT id
                 FROM proxmox_nodes
                 WHERE id = %s
             """
@@ -279,25 +299,33 @@ class ProxmoxNodeRepository(BaseRepository):
                 logger.info(f"Node result: {node_result}")
             else:
                 node_result = []
-                logger.info(f"No result found for node_id={node_id}")
+                logger.info(f"No result found for node_id={node_id_int}")
 
             if not node_result:
-                logger.info(f"No node found with id={node_id}")
+                logger.info(f"No node found with id={node_id_int}")
                 return None
 
-            stored_api_key = node_result[0]['api_key']
+            # Verify API key using the settings repository
+            from ..repositories.settings import SettingsRepository
+            settings_repo = SettingsRepository(user_id=1, user_role="admin")  # Use admin role for verification
 
-            # Verify API key
-            if api_key != stored_api_key:
-                logger.info(f"API key mismatch for node_id={node_id}")
+            # Validate the API key
+            api_key_data = settings_repo.validate_api_key(
+                api_key=api_key,
+                key_type="proxmox_node",
+                resource_id=node_id_int
+            )
+
+            if not api_key_data:
+                logger.info(f"API key validation failed for node_id={node_id_int}")
                 return None
 
-            logger.info(f"API key verified for node_id={node_id}")
+            logger.info(f"API key verified for node_id={node_id_int}")
 
             # Get all VMs for this node
             vms_query = """
                 SELECT
-                    id, vmid, name, status, cpu_cores, memory_mb,
+                    id, vmid, name, status, cpu_cores, cpu_usage_percent, memory_mb,
                     disk_gb, ip_address, proxmox_node_id, owner_id,
                     created_at, updated_at
                 FROM vms
@@ -321,8 +349,8 @@ class ProxmoxNodeRepository(BaseRepository):
             cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
             # Execute the query
-            logger.info(f"Executing direct query: {vms_query} with params: {node_id}")
-            cursor.execute(vms_query, (node_id,))
+            logger.info(f"Executing direct query: {vms_query} with params: {node_id_int}")
+            cursor.execute(vms_query, (node_id_int,))
             logger.info(f"Direct query executed successfully")
 
             # Fetch the results
@@ -336,12 +364,12 @@ class ProxmoxNodeRepository(BaseRepository):
             cursor.close()
             conn.close()
 
-            logger.info(f"Found {len(vms)} VMs for node_id={node_id}")
+            logger.info(f"Found {len(vms)} VMs for node_id={node_id_int}")
 
             return {
                 "vms": vms,
                 "count": len(vms),
-                "node_id": node_id
+                "node_id": node_id_int
             }
         except Exception as e:
             logger.error(f"Error in get_agent_vms: {e}")
@@ -362,11 +390,21 @@ class ProxmoxNodeRepository(BaseRepository):
             Optional[Dict[str, Any]]: A dictionary with whitelist or None if authentication failed.
         """
         try:
-            logger.info(f"Getting agent whitelist for node_id={node_id}")
+            # Validate node_id is a valid integer
+            try:
+                node_id_int = int(node_id)
+                if str(node_id_int) != str(node_id):
+                    logger.error(f"Invalid node_id: {node_id} (not a valid integer)")
+                    return None
+            except (ValueError, TypeError):
+                logger.error(f"Invalid node_id: {node_id} (not a valid integer)")
+                return None
 
-            # First, verify the node and API key
+            logger.info(f"Getting agent whitelist for node_id={node_id_int}")
+
+            # First, verify the node exists
             node_query = """
-                SELECT id, api_key, whitelist
+                SELECT id, whitelist
                 FROM proxmox_nodes
                 WHERE id = %s
             """
@@ -405,28 +443,37 @@ class ProxmoxNodeRepository(BaseRepository):
                 logger.info(f"Node result: {node_result}")
             else:
                 node_result = []
-                logger.info(f"No result found for node_id={node_id}")
+                logger.info(f"No result found for node_id={node_id_int}")
 
             if not node_result:
-                logger.info(f"No node found with id={node_id}")
+                logger.info(f"No node found with id={node_id_int}")
                 return None
 
-            stored_api_key = node_result[0]['api_key']
             whitelist = node_result[0]['whitelist'] or []
 
-            logger.info(f"Node id={node_id} has api_key={stored_api_key[:5]}... and whitelist with {len(whitelist)} items")
+            logger.info(f"Node id={node_id_int} has whitelist with {len(whitelist)} items")
             logger.info(f"Provided api_key={api_key[:5]}...")
 
-            # Verify API key
-            if api_key != stored_api_key:
-                logger.info(f"API key mismatch for node_id={node_id}")
+            # Verify API key using the settings repository
+            from ..repositories.settings import SettingsRepository
+            settings_repo = SettingsRepository(user_id=1, user_role="admin")  # Use admin role for verification
+
+            # Validate the API key
+            api_key_data = settings_repo.validate_api_key(
+                api_key=api_key,
+                key_type="proxmox_node",
+                resource_id=node_id_int
+            )
+
+            if not api_key_data:
+                logger.info(f"API key validation failed for node_id={node_id_int}")
                 return None
 
-            logger.info(f"API key verified for node_id={node_id}")
+            logger.info(f"API key verified for node_id={node_id_int}")
             return {
                 "whitelist": whitelist,
                 "count": len(whitelist),
-                "node_id": node_id
+                "node_id": node_id_int
             }
         except Exception as e:
             logger.error(f"Error in get_agent_whitelist: {e}")
@@ -446,13 +493,45 @@ class ProxmoxNodeRepository(BaseRepository):
         Returns:
             bool: True if the status was updated, False otherwise.
         """
-        update_query = """
-            UPDATE proxmox_nodes
-            SET status = %s, last_seen = NOW()
-            WHERE id = %s
-        """
-        result = self.execute_command(update_query, (status, node_id), with_rls=False)
-        return result > 0
+        try:
+            # Ensure node_id is a valid integer
+            if node_id is None or node_id == "" or node_id == 0:
+                logger.error(f"Invalid node_id: {node_id}")
+                return False
+
+            # Convert to integer if it's not already
+            if not isinstance(node_id, int):
+                try:
+                    node_id_int = int(node_id)
+                except (ValueError, TypeError):
+                    logger.error(f"Cannot convert node_id to integer: {node_id}")
+                    return False
+            else:
+                node_id_int = node_id
+
+            logger.info(f"Updating node status: node_id={node_id_int}, status={status}")
+
+            update_query = """
+                UPDATE proxmox_nodes
+                SET status = %s, last_seen = NOW()
+                WHERE id = %s
+            """
+            # Ensure both parameters are properly typed
+            logger.debug(f"Executing update query with params: status={status} (type: {type(status)}), node_id={node_id_int} (type: {type(node_id_int)})")
+            result = self.execute_command(update_query, (status, node_id_int), with_rls=False)
+
+            if result > 0:
+                logger.info(f"Successfully updated status for node_id={node_id_int}")
+                return True
+            else:
+                logger.warning(f"No rows affected when updating status for node_id={node_id_int}")
+                return False
+        except Exception as e:
+            logger.error(f"Error in update_node_status: {e}")
+            logger.error(f"Error type: {type(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
 
     def get_nodes_by_status(self, status: str) -> Dict[str, Any]:
         """

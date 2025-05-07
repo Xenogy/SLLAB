@@ -2,20 +2,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Bot, Server, Activity } from "lucide-react"
 import Link from "next/link"
-import { DashboardStats } from "@/components/dashboard-stats"
-import { Metadata } from "next"
-
-export const metadata: Metadata = {
-  title: "Dashboard | Account Manager",
-  description: "Account Manager Dashboard",
-}
+import { ClientDashboardStats } from "./client-components"
 
 export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Dashboard</h1>
 
-      <DashboardStats />
+      {/* DashboardStats is a client component */}
+      <ClientDashboardStats />
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>

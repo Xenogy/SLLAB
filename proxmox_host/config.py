@@ -24,10 +24,18 @@ class AccountDBConfig(BaseModel):
     api_key: str
     node_id: int
 
+class LogConfig(BaseModel):
+    """Log forwarding configuration."""
+    enabled: bool = True
+    level: str = "INFO"
+    batch_size: int = 10
+    flush_interval: int = 60  # seconds
+
 class Config(BaseModel):
     """Application configuration."""
     proxmox: ProxmoxConfig
     accountdb: AccountDBConfig
+    logging: LogConfig = LogConfig()
     update_interval: int = 300  # seconds
     log_level: str = "INFO"
     debug: bool = False
@@ -46,6 +54,12 @@ def load_config() -> Config:
             url=os.getenv("ACCOUNTDB_URL", "http://localhost:8080"),
             api_key=os.getenv("ACCOUNTDB_API_KEY", ""),
             node_id=int(os.getenv("ACCOUNTDB_NODE_ID", "1")),
+        ),
+        logging=LogConfig(
+            enabled=os.getenv("LOG_FORWARDING_ENABLED", "true").lower() == "true",
+            level=os.getenv("LOG_FORWARDING_LEVEL", "INFO"),
+            batch_size=int(os.getenv("LOG_BATCH_SIZE", "10")),
+            flush_interval=int(os.getenv("LOG_FLUSH_INTERVAL", "60")),
         ),
         update_interval=int(os.getenv("UPDATE_INTERVAL", "300")),
         log_level=os.getenv("LOG_LEVEL", "INFO"),

@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 # Use absolute imports instead of relative imports
 from dependencies import get_query_token, get_token_header
-from routers import accounts, cards, hardware, steam_auth, account_status, auth, upload, vms, proxmox_nodes, monitoring, vm_access
+from routers import accounts, cards, hardware, steam_auth, account_status, auth, upload, vms, proxmox_nodes, monitoring, vm_access, windows_vm_agent, settings, timeseries, farmlabs, logs, ban_check, downloads
 #from init_rls import init_rls
 from fix_ownership import fix_ownership
 from config import Config
@@ -17,6 +17,7 @@ from middleware.rate_limiting import RateLimitMiddleware
 from middleware.timeout import TimeoutMiddleware
 from middleware.size_limit import SizeLimitMiddleware
 from monitoring import init_monitoring, shutdown_monitoring, TracingMiddleware
+from timeseries import init_collector, init_aggregator, shutdown_collector, shutdown_aggregator
 
 # Configure logging
 # Create logs directory if it doesn't exist
@@ -61,6 +62,22 @@ async def lifespan(app: FastAPI):
         # Initialize monitoring
         init_monitoring()
 
+        # Initialize log storage system
+        logger.info("Initializing log storage system...")
+        from utils.log_utils import init_logging as init_log_storage
+        init_log_storage()
+        logger.info("Log storage system initialized")
+
+        # Wait for database and initialize connection pool
+        logger.info("Waiting for database and initializing connection pool...")
+        from db import wait_for_database, initialize_connection_pool
+        if not wait_for_database(max_retries=30, retry_interval=2):
+            logger.warning("Database not available after waiting, will retry in background")
+        else:
+            # Initialize connection pool
+            if not initialize_connection_pool():
+                logger.warning("Failed to initialize connection pool, will retry in background")
+
         # Initialize database monitoring and health checks
         logger.info("Initializing database monitoring and health checks...")
         from db.monitoring import init_monitoring as init_db_monitoring
@@ -68,6 +85,12 @@ async def lifespan(app: FastAPI):
         init_db_monitoring()
         init_health_checks()
         logger.info("Database monitoring and health checks initialized")
+
+        # Initialize timeseries collection and aggregation
+        logger.info("Initializing timeseries collection and aggregation...")
+        init_collector()
+        init_aggregator()
+        logger.info("Timeseries collection and aggregation initialized")
 
         # Run database improvements
         logger.info("Running database improvements...")
@@ -77,8 +100,11 @@ async def lifespan(app: FastAPI):
 
         # Fix ownership for existing accounts
         logger.info("Fixing ownership for existing accounts...")
-        fix_ownership()
-        logger.info("Ownership fixed successfully")
+        success = fix_ownership(max_retries=5, retry_interval=2)
+        if success:
+            logger.info("Ownership fixed successfully")
+        else:
+            logger.warning("Failed to fix ownership, will retry later")
     except Exception as e:
         error_msg = f"Error during application initialization: {e}"
 
@@ -105,6 +131,23 @@ async def lifespan(app: FastAPI):
         logger.info("Database monitoring and health checks shutdown")
     except Exception as e:
         logger.error(f"Error shutting down database monitoring and health checks: {e}")
+
+    # Shutdown log storage system
+    try:
+        from utils.log_utils import shutdown_logging as shutdown_log_storage
+        shutdown_log_storage()
+        logger.info("Log storage system shutdown")
+    except Exception as e:
+        logger.error(f"Error shutting down log storage system: {e}")
+
+    # Shutdown timeseries collection and aggregation
+    try:
+        logger.info("Shutting down timeseries collection and aggregation...")
+        shutdown_collector()
+        shutdown_aggregator()
+        logger.info("Timeseries collection and aggregation shutdown")
+    except Exception as e:
+        logger.error(f"Error shutting down timeseries collection and aggregation: {e}")
 
     # Shutdown monitoring
     shutdown_monitoring()
@@ -184,6 +227,14 @@ app = FastAPI(
         {
             "name": "vm-access",
             "description": "Virtual machine access control operations",
+        },
+        {
+            "name": "timeseries",
+            "description": "Timeseries data for performance metrics and statistics",
+        },
+        {
+            "name": "ban-check",
+            "description": "Steam profile ban checker with proxy and retry support",
         },
     ],
     docs_url="/api/docs",
@@ -287,6 +338,13 @@ app.include_router(vms.router)
 app.include_router(proxmox_nodes.router)
 app.include_router(vm_access.router)
 app.include_router(monitoring.router)
+app.include_router(windows_vm_agent.router)
+app.include_router(settings.router)
+app.include_router(timeseries.router)
+app.include_router(farmlabs.router)
+app.include_router(logs.router)
+app.include_router(ban_check.router)
+app.include_router(downloads.router)
 
 @app.get("/")
 async def root():

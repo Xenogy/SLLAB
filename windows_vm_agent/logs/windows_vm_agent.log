@@ -1,0 +1,126 @@
+2025-04-30 10:12:08,213 - root - INFO - Logging initialized at level DEBUG
+2025-04-30 10:12:08,213 - root - INFO - Log file: /home/axel/accountdb/windows_vm_agent/logs/windows_vm_agent.log
+2025-04-30 10:12:08,213 - windows_vm_agent.config.config_loader - INFO - Loading configuration from /home/axel/accountdb/windows_vm_agent/config.yaml
+2025-04-30 10:12:08,218 - windows_vm_agent.config.config_loader - INFO - Configuration validation successful
+2025-04-30 10:12:08,218 - windows_vm_agent.agent.agent - INFO - Agent initialization completed successfully
+2025-04-30 10:12:08,218 - windows_vm_agent.agent.agent - INFO - Starting agent
+2025-04-30 10:12:08,219 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'AccountLoginMonitor' for ./test_logs/bot.log
+2025-04-30 10:12:08,220 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'ErrorMonitor' for ./test_logs/error.log
+2025-04-30 10:12:08,220 - windows_vm_agent.agent.agent - INFO - Agent started with 2 monitors
+2025-04-30 10:12:52,268 - root - INFO - Logging initialized at level DEBUG
+2025-04-30 10:12:52,269 - root - INFO - Log file: /home/axel/accountdb/windows_vm_agent/logs/windows_vm_agent.log
+2025-04-30 10:12:52,269 - windows_vm_agent.config.config_loader - INFO - Loading configuration from /home/axel/accountdb/windows_vm_agent/config.yaml
+2025-04-30 10:12:52,282 - windows_vm_agent.config.config_loader - INFO - Configuration validation successful
+2025-04-30 10:12:52,284 - windows_vm_agent.agent.agent - INFO - Agent initialization completed successfully
+2025-04-30 10:12:52,284 - windows_vm_agent.agent.agent - INFO - Starting agent
+2025-04-30 10:12:52,286 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'AccountLoginMonitor' for ./test_logs/bot.log
+2025-04-30 10:12:52,288 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'ErrorMonitor' for ./test_logs/error.log
+2025-04-30 10:12:52,288 - windows_vm_agent.agent.agent - INFO - Agent started with 2 monitors
+2025-04-30 10:13:20,727 - windows_vm_agent.agent.agent - INFO - Received keyboard interrupt, stopping agent
+2025-04-30 10:13:20,727 - windows_vm_agent.agent.agent - INFO - Stopping agent
+2025-04-30 10:13:21,297 - windows_vm_agent.monitors.log_file_monitor - INFO - Stopped log file monitor 'AccountLoginMonitor'
+2025-04-30 10:13:22,296 - windows_vm_agent.monitors.log_file_monitor - INFO - Stopped log file monitor 'ErrorMonitor'
+2025-04-30 10:13:22,297 - windows_vm_agent.agent.agent - INFO - Agent stopped
+2025-04-30 10:13:35,125 - root - INFO - Logging initialized at level DEBUG
+2025-04-30 10:13:35,126 - root - INFO - Log file: /home/axel/accountdb/windows_vm_agent/logs/windows_vm_agent.log
+2025-04-30 10:13:35,127 - windows_vm_agent.config.config_loader - INFO - Loading configuration from /home/axel/accountdb/windows_vm_agent/config.yaml
+2025-04-30 10:13:35,139 - windows_vm_agent.config.config_loader - INFO - Configuration validation successful
+2025-04-30 10:13:35,141 - windows_vm_agent.agent.agent - INFO - Agent initialization completed successfully
+2025-04-30 10:13:35,141 - windows_vm_agent.agent.agent - INFO - Starting agent
+2025-04-30 10:13:35,142 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'AccountLoginMonitor' for ./test_logs/bot.log
+2025-04-30 10:13:35,143 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'ErrorMonitor' for ./test_logs/error.log
+2025-04-30 10:13:35,144 - windows_vm_agent.agent.agent - INFO - Agent started with 2 monitors
+2025-04-30 10:14:14,480 - windows_vm_agent.agent.agent - INFO - Received keyboard interrupt, stopping agent
+2025-04-30 10:14:14,481 - windows_vm_agent.agent.agent - INFO - Stopping agent
+2025-04-30 10:14:15,159 - windows_vm_agent.monitors.log_file_monitor - INFO - Stopped log file monitor 'AccountLoginMonitor'
+2025-04-30 10:14:16,160 - windows_vm_agent.monitors.log_file_monitor - INFO - Stopped log file monitor 'ErrorMonitor'
+2025-04-30 10:14:16,160 - windows_vm_agent.agent.agent - INFO - Agent stopped
+2025-04-30 10:14:48,866 - root - INFO - Logging initialized at level DEBUG
+2025-04-30 10:14:48,866 - root - INFO - Log file: /home/axel/accountdb/windows_vm_agent/logs/windows_vm_agent.log
+2025-04-30 10:14:48,867 - windows_vm_agent.config.config_loader - INFO - Loading configuration from /home/axel/accountdb/windows_vm_agent/config.yaml
+2025-04-30 10:14:48,871 - windows_vm_agent.config.config_loader - INFO - Configuration validation successful
+2025-04-30 10:14:48,872 - windows_vm_agent.agent.agent - INFO - Agent initialization completed successfully
+2025-04-30 10:14:48,872 - windows_vm_agent.agent.agent - INFO - Starting agent
+2025-04-30 10:14:48,873 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'AccountLoginMonitor' for ./test_logs/bot.log
+2025-04-30 10:14:48,873 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'ErrorMonitor' for ./test_logs/error.log
+2025-04-30 10:14:48,873 - windows_vm_agent.agent.agent - INFO - Agent started with 2 monitors
+2025-04-30 10:16:03,828 - root - INFO - Logging initialized at level DEBUG
+2025-04-30 10:16:03,829 - root - INFO - Log file: /home/axel/accountdb/windows_vm_agent/logs/windows_vm_agent.log
+2025-04-30 10:16:03,830 - windows_vm_agent.config.config_loader - INFO - Loading configuration from /home/axel/accountdb/windows_vm_agent/config.yaml
+2025-04-30 10:16:03,842 - windows_vm_agent.config.config_loader - INFO - Configuration validation successful
+2025-04-30 10:16:03,844 - windows_vm_agent.agent.agent - INFO - Agent initialization completed successfully
+2025-04-30 10:16:03,844 - windows_vm_agent.agent.agent - INFO - Starting agent
+2025-04-30 10:16:03,846 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'AccountLoginMonitor' for ./test_logs/bot.log
+2025-04-30 10:16:03,847 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'ErrorMonitor' for ./test_logs/error.log
+2025-04-30 10:16:03,848 - windows_vm_agent.agent.agent - INFO - Agent started with 2 monitors
+2025-04-30 10:16:28,856 - windows_vm_agent.monitors.base_monitor - INFO - Event 'AccountLoginDetected' triggered in monitor 'AccountLoginMonitor'
+2025-04-30 10:16:28,857 - windows_vm_agent.agent.action_manager - INFO - Handling event with action: UpdateProxyForAccount
+2025-04-30 10:16:28,858 - windows_vm_agent.api.api_client - INFO - Making API request to: http://localhost:8000/api/account-config?vm_id=TEST_VM&account_id=testuser456
+2025-04-30 10:16:28,863 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): localhost:8000
+2025-04-30 10:16:58,891 - windows_vm_agent.api.api_client - ERROR - API request error: HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=30)
+2025-04-30 10:16:58,892 - windows_vm_agent.agent.action_manager - ERROR - Failed to get API data for action UpdateProxyForAccount
+2025-04-30 10:17:51,410 - windows_vm_agent.agent.agent - INFO - Received keyboard interrupt, stopping agent
+2025-04-30 10:17:51,411 - windows_vm_agent.agent.agent - INFO - Stopping agent
+2025-04-30 10:17:51,908 - windows_vm_agent.monitors.log_file_monitor - INFO - Stopped log file monitor 'AccountLoginMonitor'
+2025-04-30 10:17:52,883 - windows_vm_agent.monitors.log_file_monitor - INFO - Stopped log file monitor 'ErrorMonitor'
+2025-04-30 10:17:52,883 - windows_vm_agent.agent.agent - INFO - Agent stopped
+2025-04-30 10:18:06,216 - root - INFO - Logging initialized at level DEBUG
+2025-04-30 10:18:06,216 - root - INFO - Log file: /home/axel/accountdb/windows_vm_agent/logs/windows_vm_agent.log
+2025-04-30 10:18:06,216 - windows_vm_agent.config.config_loader - INFO - Loading configuration from /home/axel/accountdb/windows_vm_agent/config.yaml
+2025-04-30 10:18:06,221 - windows_vm_agent.config.config_loader - INFO - Configuration validation successful
+2025-04-30 10:18:06,221 - windows_vm_agent.agent.agent - INFO - Agent initialization completed successfully
+2025-04-30 10:18:06,222 - windows_vm_agent.agent.agent - INFO - Starting agent
+2025-04-30 10:18:06,222 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'AccountLoginMonitor' for ./test_logs/bot.log
+2025-04-30 10:18:06,223 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'ErrorMonitor' for ./test_logs/error.log
+2025-04-30 10:18:06,223 - windows_vm_agent.agent.agent - INFO - Agent started with 2 monitors
+2025-04-30 10:20:53,149 - root - INFO - Logging initialized at level DEBUG
+2025-04-30 10:20:53,150 - root - INFO - Log file: /home/axel/accountdb/windows_vm_agent/logs/windows_vm_agent.log
+2025-04-30 10:20:53,151 - windows_vm_agent.config.config_loader - INFO - Loading configuration from /home/axel/accountdb/windows_vm_agent/config.yaml
+2025-04-30 10:20:53,164 - windows_vm_agent.config.config_loader - INFO - Configuration validation successful
+2025-04-30 10:20:53,165 - windows_vm_agent.agent.agent - INFO - Agent initialization completed successfully
+2025-04-30 10:20:53,166 - windows_vm_agent.agent.agent - INFO - Starting agent
+2025-04-30 10:20:53,167 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'AccountLoginMonitor' for ./test_logs/bot.log
+2025-04-30 10:20:53,168 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'ErrorMonitor' for ./test_logs/error.log
+2025-04-30 10:20:53,169 - windows_vm_agent.agent.agent - INFO - Agent started with 2 monitors
+2025-04-30 10:23:18,176 - root - INFO - Logging initialized at level DEBUG
+2025-04-30 10:23:18,176 - root - INFO - Log file: /home/axel/accountdb/windows_vm_agent/logs/windows_vm_agent.log
+2025-04-30 10:23:18,176 - windows_vm_agent.config.config_loader - INFO - Loading configuration from /home/axel/accountdb/windows_vm_agent/config.yaml
+2025-04-30 10:23:18,181 - windows_vm_agent.config.config_loader - INFO - Configuration validation successful
+2025-04-30 10:23:18,181 - windows_vm_agent.agent.agent - INFO - Agent initialization completed successfully
+2025-04-30 10:23:18,182 - windows_vm_agent.agent.agent - INFO - Starting agent
+2025-04-30 10:23:18,182 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'AccountLoginMonitor' for ./test_logs/bot.log
+2025-04-30 10:23:18,183 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'ErrorMonitor' for ./test_logs/error.log
+2025-04-30 10:23:18,183 - windows_vm_agent.agent.agent - INFO - Agent started with 2 monitors
+2025-04-30 10:24:51,707 - root - INFO - Logging initialized at level DEBUG
+2025-04-30 10:24:51,708 - root - INFO - Log file: /home/axel/accountdb/windows_vm_agent/logs/windows_vm_agent.log
+2025-04-30 10:24:51,708 - windows_vm_agent.config.config_loader - INFO - Loading configuration from /home/axel/accountdb/windows_vm_agent/config.yaml
+2025-04-30 10:24:51,713 - windows_vm_agent.config.config_loader - INFO - Configuration validation successful
+2025-04-30 10:24:51,714 - windows_vm_agent.agent.agent - INFO - Agent initialization completed successfully
+2025-04-30 10:24:51,714 - windows_vm_agent.agent.agent - INFO - Starting agent
+2025-04-30 10:24:51,715 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'AccountLoginMonitor' for ./test_logs/bot.log
+2025-04-30 10:24:51,716 - windows_vm_agent.monitors.log_file_monitor - INFO - Started log file monitor 'ErrorMonitor' for ./test_logs/error.log
+2025-04-30 10:24:51,716 - windows_vm_agent.agent.agent - INFO - Agent started with 2 monitors
+2025-04-30 10:25:05,722 - windows_vm_agent.monitors.base_monitor - INFO - Event 'AccountLoginDetected' triggered in monitor 'AccountLoginMonitor'
+2025-04-30 10:25:05,722 - windows_vm_agent.agent.action_manager - INFO - Handling event with action: UpdateProxyForAccount
+2025-04-30 10:25:05,723 - windows_vm_agent.api.api_client - INFO - Making API request to: http://localhost:9000/api/account-config?vm_id=TEST_VM&account_id=newuser789
+2025-04-30 10:25:05,728 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): localhost:9000
+2025-04-30 10:25:05,733 - urllib3.connectionpool - DEBUG - http://localhost:9000 "GET /api/account-config?vm_id=TEST_VM&account_id=newuser789 HTTP/1.1" 200 None
+2025-04-30 10:25:05,735 - windows_vm_agent.scripts.script_executor - INFO - Executing script: Set-Proxy.ps1 with parameters: {'ProxyAddress': 'http://proxy-newuser789.example.com:8080', 'BypassList': 'localhost;127.0.0.1;*.local'}
+2025-04-30 10:25:05,735 - windows_vm_agent.scripts.script_executor - ERROR - Error executing script Set-Proxy.ps1: module 'subprocess' has no attribute 'CREATE_NO_WINDOW'
+2025-04-30 10:25:05,736 - windows_vm_agent.agent.action_manager - ERROR - Action UpdateProxyForAccount failed: Error executing script: module 'subprocess' has no attribute 'CREATE_NO_WINDOW'
+2025-04-30 10:25:06,236 - windows_vm_agent.monitors.base_monitor - INFO - Event 'AccountLoginDetected' triggered in monitor 'AccountLoginMonitor'
+2025-04-30 10:25:06,237 - windows_vm_agent.agent.action_manager - INFO - Handling event with action: UpdateProxyForAccount
+2025-04-30 10:25:06,237 - windows_vm_agent.api.api_client - INFO - Making API request to: http://localhost:9000/api/account-config?vm_id=TEST_VM&account_id=newuser789
+2025-04-30 10:25:06,242 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): localhost:9000
+2025-04-30 10:25:06,247 - urllib3.connectionpool - DEBUG - http://localhost:9000 "GET /api/account-config?vm_id=TEST_VM&account_id=newuser789 HTTP/1.1" 200 None
+2025-04-30 10:25:06,249 - windows_vm_agent.scripts.script_executor - INFO - Executing script: Set-Proxy.ps1 with parameters: {'ProxyAddress': 'http://proxy-newuser789.example.com:8080', 'BypassList': 'localhost;127.0.0.1;*.local'}
+2025-04-30 10:25:06,250 - windows_vm_agent.scripts.script_executor - ERROR - Error executing script Set-Proxy.ps1: module 'subprocess' has no attribute 'CREATE_NO_WINDOW'
+2025-04-30 10:25:06,250 - windows_vm_agent.agent.action_manager - ERROR - Action UpdateProxyForAccount failed: Error executing script: module 'subprocess' has no attribute 'CREATE_NO_WINDOW'
+2025-04-30 10:28:20,325 - windows_vm_agent.monitors.base_monitor - INFO - Event 'AccountLoginDetected' triggered in monitor 'AccountLoginMonitor'
+2025-04-30 10:28:20,326 - windows_vm_agent.agent.action_manager - INFO - Handling event with action: UpdateProxyForAccount
+2025-04-30 10:28:20,327 - windows_vm_agent.api.api_client - INFO - Making API request to: http://localhost:9000/api/account-config?vm_id=TEST_VM&account_id=finaltest123
+2025-04-30 10:28:20,329 - urllib3.connectionpool - DEBUG - Resetting dropped connection: localhost
+2025-04-30 10:28:20,333 - urllib3.connectionpool - DEBUG - http://localhost:9000 "GET /api/account-config?vm_id=TEST_VM&account_id=finaltest123 HTTP/1.1" 200 None
+2025-04-30 10:28:20,335 - windows_vm_agent.scripts.script_executor - INFO - Executing script: Set-Proxy.ps1 with parameters: {'ProxyAddress': 'http://proxy-finaltest123.example.com:8080', 'BypassList': 'localhost;127.0.0.1;*.local'}
+2025-04-30 10:28:20,335 - windows_vm_agent.scripts.script_executor - ERROR - Error executing script Set-Proxy.ps1: module 'subprocess' has no attribute 'CREATE_NO_WINDOW'
+2025-04-30 10:28:20,336 - windows_vm_agent.agent.action_manager - ERROR - Action UpdateProxyForAccount failed: Error executing script: module 'subprocess' has no attribute 'CREATE_NO_WINDOW'

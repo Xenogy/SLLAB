@@ -46,59 +46,57 @@ export function WhitelistDialog({ open, onOpenChange, node, onWhitelistUpdated }
   const fetchWhitelist = async () => {
     setInitialLoading(true)
     try {
-      // Use the token from auth context if available
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      }
+      console.log('Fetching whitelist for node:', node.id);
 
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
+      // Use the API function from lib/api.ts to get the whitelist
+      try {
+        // First try to use the dedicated whitelist endpoint
+        const result = await proxmoxNodesAPI.getNodeWhitelist(parseInt(node.id));
+        console.log('Whitelist API response:', result);
 
-      // First try to fetch directly from the backend API
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://cs2.drandex.org'
-      const response = await fetch(`${apiUrl}/proxmox-nodes/whitelist/${node.id}`, {
-        headers,
-      })
-
-      if (!response.ok) {
-        // If direct API call fails, try through our API route
-        console.log('Direct API call failed, trying through API route')
-        const routeResponse = await fetch(`/api/proxmox-nodes/whitelist/${node.id}`)
-
-        if (!routeResponse.ok) {
-          // Check if it's an authentication error
-          if (routeResponse.status === 401) {
-            const errorData = await routeResponse.json()
-            toast({
-              title: 'Authentication Error',
-              description: 'Please log in again to continue',
-              variant: 'destructive',
-            })
-
-            // Redirect to login page
-            window.location.href = '/auth/login'
-            return
-          }
-
-          throw new Error('Failed to fetch whitelist')
+        if (result && result.vmids && Array.isArray(result.vmids)) {
+          console.log('Setting whitelist from dedicated endpoint:', result.vmids);
+          setVmids(result.vmids);
+          return; // Exit early if we got the whitelist successfully
+        } else {
+          console.log('Whitelist endpoint returned invalid data, falling back to node details');
         }
+      } catch (whitelistError) {
+        console.error('Error fetching from whitelist endpoint:', whitelistError);
+        console.log('Falling back to node details endpoint');
+      }
 
-        const data = await routeResponse.json()
-        setVmids(data.vmids || [])
-      } else {
-        const data = await response.json()
-        setVmids(data.vmids || [])
+      // Fallback: Try to get the node details which should include the whitelist
+      try {
+        const nodeDetails = await proxmoxNodesAPI.getNode(parseInt(node.id));
+        console.log('Node details API response:', nodeDetails);
+
+        if (nodeDetails && nodeDetails.whitelist && Array.isArray(nodeDetails.whitelist)) {
+          console.log('Setting whitelist from node details:', nodeDetails.whitelist);
+          setVmids(nodeDetails.whitelist);
+        } else {
+          console.log('Node details do not contain a valid whitelist, setting empty array');
+          setVmids([]);
+        }
+      } catch (nodeError) {
+        console.error('Error fetching node details:', nodeError);
+        toast({
+          title: 'Warning',
+          description: 'Could not load existing whitelist. Starting with empty list.',
+          variant: 'default',
+        });
+        setVmids([]);
       }
     } catch (error) {
-      console.error('Error fetching whitelist:', error)
+      console.error('Error in fetchWhitelist:', error);
       toast({
         title: 'Error',
         description: 'Failed to load existing whitelist',
         variant: 'destructive',
-      })
+      });
+      setVmids([]);
     } finally {
-      setInitialLoading(false)
+      setInitialLoading(false);
     }
   }
 
@@ -145,10 +143,10 @@ export function WhitelistDialog({ open, onOpenChange, node, onWhitelistUpdated }
     setLoading(true)
 
     try {
-      const result = await proxmoxNodesAPI.setVMIDWhitelist({
+      await proxmoxNodesAPI.setVMIDWhitelist({
         node_id: parseInt(node.id),
         vmids: vmids,
-      })
+      });
 
       toast({
         title: "Success",
@@ -171,10 +169,10 @@ export function WhitelistDialog({ open, onOpenChange, node, onWhitelistUpdated }
 
   // Handle dialog close
   const handleDialogChange = (newOpen: boolean) => {
-    if (!newOpen) {
-      // Clear the whitelist when dialog is closed
-      setVmids([])
+    if (newOpen) {
+      // Clear the input field when dialog is opened
       setVmidInput("")
+      // The whitelist will be fetched in the useEffect
     }
     onOpenChange(newOpen)
   }

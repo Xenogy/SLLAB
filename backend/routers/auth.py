@@ -26,6 +26,7 @@ from db.token_blacklist import add_to_blacklist, is_blacklisted, get_blacklist_s
 from db.secure_access import get_secure_db
 from config import Config
 from utils.password_validator import validate_password_strength, get_password_strength_feedback, get_password_requirements
+from utils.log_utils import log_security, log_audit
 
 # JWT settings
 SECRET_KEY = Config.JWT_SECRET
@@ -470,12 +471,13 @@ async def get_current_admin_user(current_user = Depends(get_current_active_user)
 
 # Endpoints
 @router.post("/token", response_model=Token)
-async def login_for_access_token(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
+async def login_for_access_token(response: Response, request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     """
     Login endpoint that returns access and refresh tokens.
 
     Args:
         response (Response): The response object
+        request (Request): The request object
         form_data (OAuth2PasswordRequestForm, optional): The login form data. Defaults to Depends().
 
     Returns:
@@ -491,6 +493,18 @@ async def login_for_access_token(response: Response, form_data: OAuth2PasswordRe
     user = get_user(form_data.username)
     if not user:
         logger.warning(f"User not found: {form_data.username}")
+        # Log failed login attempt for non-existent user
+        log_security(
+            event="Failed login attempt for non-existent user",
+            details={
+                "username": form_data.username,
+                "ip_address": request.client.host if hasattr(request, "client") else None,
+                "user_agent": request.headers.get("user-agent")
+            },
+            level="WARNING",
+            owner_id=2,  # Set owner_id to user ID 2 for non-existent user logs
+            source="auth"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -505,6 +519,22 @@ async def login_for_access_token(response: Response, form_data: OAuth2PasswordRe
             lockout_expiry = datetime.fromisoformat(lockout_time) + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
             if datetime.utcnow() < lockout_expiry:
                 logger.warning(f"User {user['username']} is locked out until {lockout_expiry}")
+
+                # Log account lockout access attempt
+                log_security(
+                    event="Login attempt on locked account",
+                    user_id=user["id"],
+                    owner_id=user["id"],
+                    details={
+                        "username": user["username"],
+                        "ip_address": request.client.host if hasattr(request, "client") else None,
+                        "user_agent": request.headers.get("user-agent"),
+                        "lockout_expiry": lockout_expiry.isoformat()
+                    },
+                    level="WARNING",
+                    source="auth"
+                )
+
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail=f"Account is locked due to too many failed login attempts. Try again after {lockout_expiry}",
@@ -514,6 +544,20 @@ async def login_for_access_token(response: Response, form_data: OAuth2PasswordRe
     # Authenticate user
     if not verify_password(form_data.password, user["password_hash"]):
         logger.warning(f"Password verification failed for user: {form_data.username}")
+
+        # Log failed login attempt
+        log_security(
+            event="Failed login attempt - incorrect password",
+            user_id=user["id"],
+            owner_id=user["id"],
+            details={
+                "username": user["username"],
+                "ip_address": request.client.host if hasattr(request, "client") else None,
+                "user_agent": request.headers.get("user-agent")
+            },
+            level="WARNING",
+            source="auth"
+        )
 
         # Increment failed login attempts
         try:
@@ -551,6 +595,22 @@ async def login_for_access_token(response: Response, form_data: OAuth2PasswordRe
                         # Check if user is now locked out
                         if failed_attempts >= MAX_LOGIN_ATTEMPTS:
                             logger.warning(f"User {user['username']} is now locked out")
+
+                            # Log account lockout
+                            log_security(
+                                event="Account locked due to too many failed login attempts",
+                                user_id=user["id"],
+                                owner_id=user["id"],
+                                details={
+                                    "username": user["username"],
+                                    "ip_address": request.client.host if hasattr(request, "client") else None,
+                                    "user_agent": request.headers.get("user-agent"),
+                                    "failed_attempts": failed_attempts,
+                                    "lockout_duration_minutes": LOCKOUT_DURATION_MINUTES
+                                },
+                                level="WARNING",
+                                source="auth"
+                            )
                     except Exception as column_error:
                         # If the column doesn't exist, log a warning but continue
                         if "column" in str(column_error) and "failed_login_attempts" in str(column_error):
@@ -687,6 +747,19 @@ async def login_for_access_token(response: Response, form_data: OAuth2PasswordRe
 
     logger.info(f"Login successful for user: {user['username']}")
 
+    # Log successful login
+    log_audit(
+        action="User login",
+        user_id=user["id"],
+        owner_id=user["id"],
+        details={
+            "username": user["username"],
+            "ip_address": request.client.host if hasattr(request, "client") else None,
+            "user_agent": request.headers.get("user-agent")
+        },
+        source="auth"
+    )
+
     # Return tokens in the response
     return {
         "access_token": access_token,
@@ -728,7 +801,7 @@ async def get_password_requirements():
     return requirements
 
 @router.post("/register", response_model=UserResponse, dependencies=[])
-async def register_user(response: Response, user: UserCreate):
+async def register_user(response: Response, request: Request, user: UserCreate):
     """
     Register a new user (public endpoint, no authentication required).
 
@@ -746,6 +819,21 @@ async def register_user(response: Response, user: UserCreate):
     # Check if signups are enabled
     if not SIGNUPS_ENABLED:
         logger.warning(f"Registration attempt for user {user.username} when signups are disabled")
+
+        # Log failed registration - signups disabled
+        log_security(
+            event="Failed registration - signups disabled",
+            details={
+                "username": user.username,
+                "email": user.email,
+                "ip_address": request.client.host if hasattr(request, "client") else None,
+                "user_agent": request.headers.get("user-agent")
+            },
+            level="WARNING",
+            owner_id=2,  # Set owner_id to user ID 2 for failed registration logs
+            source="auth"
+        )
+
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="New user registration is currently disabled"
@@ -755,6 +843,23 @@ async def register_user(response: Response, user: UserCreate):
     is_strong, score, feedback = validate_password_strength(user.password)
     if not is_strong:
         logger.warning(f"Registration failed: Password not strong enough: {user.username}")
+
+        # Log failed registration - weak password
+        log_security(
+            event="Failed registration - weak password",
+            details={
+                "username": user.username,
+                "email": user.email,
+                "ip_address": request.client.host if hasattr(request, "client") else None,
+                "user_agent": request.headers.get("user-agent"),
+                "password_score": score,
+                "password_feedback": feedback
+            },
+            level="WARNING",
+            owner_id=2,  # Set owner_id to user ID 2 for failed registration logs
+            source="auth"
+        )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"message": "Password not strong enough", "feedback": feedback}
@@ -769,6 +874,21 @@ async def register_user(response: Response, user: UserCreate):
                 username_check = db_conn.execute_query("SELECT username FROM users WHERE username = %s", (user.username,))
                 if username_check:
                     logger.warning(f"Registration attempt for user {user.username} with existing username")
+
+                    # Log failed registration - username exists
+                    log_security(
+                        event="Failed registration - username exists",
+                        details={
+                            "username": user.username,
+                            "email": user.email,
+                            "ip_address": request.client.host if hasattr(request, "client") else None,
+                            "user_agent": request.headers.get("user-agent")
+                        },
+                        level="WARNING",
+                        owner_id=2,  # Set owner_id to user ID 2 for failed registration logs
+                        source="auth"
+                    )
+
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Username '{user.username}' is already registered"
@@ -778,6 +898,21 @@ async def register_user(response: Response, user: UserCreate):
                 email_check = db_conn.execute_query("SELECT email FROM users WHERE email = %s", (user.email,))
                 if email_check:
                     logger.warning(f"Registration attempt with existing email {user.email}")
+
+                    # Log failed registration - email exists
+                    log_security(
+                        event="Failed registration - email exists",
+                        details={
+                            "username": user.username,
+                            "email": user.email,
+                            "ip_address": request.client.host if hasattr(request, "client") else None,
+                            "user_agent": request.headers.get("user-agent")
+                        },
+                        level="WARNING",
+                        owner_id=2,  # Set owner_id to user ID 2 for failed registration logs
+                        source="auth"
+                    )
+
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Email address is already registered"
@@ -815,6 +950,20 @@ async def register_user(response: Response, user: UserCreate):
                     new_user["last_login"] = new_user["last_login"].isoformat()
 
                 logger.info(f"User {user.username} registered successfully with ID {new_user['id']}")
+
+                # Log user registration
+                log_audit(
+                    action="User registration",
+                    user_id=new_user["id"],
+                    owner_id=new_user["id"],
+                    details={
+                        "username": new_user["username"],
+                        "email": new_user["email"],
+                        "ip_address": request.client.host if hasattr(request, "client") else None,
+                        "user_agent": request.headers.get("user-agent")
+                    },
+                    source="auth"
+                )
 
                 # Create access token
                 access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -1217,13 +1366,30 @@ async def logout(
         samesite="lax"
     )
 
-    logger.info(f"User logged out successfully")
+    # Log user logout
+    if current_user:
+        log_audit(
+            action="User logout",
+            user_id=current_user["id"],
+            owner_id=current_user["id"],
+            details={
+                "username": current_user["username"],
+                "ip_address": request.client.host if hasattr(request, "client") else None,
+                "user_agent": request.headers.get("user-agent")
+            },
+            source="auth"
+        )
+        logger.info(f"User {current_user['username']} logged out successfully")
+    else:
+        logger.info(f"Anonymous user logged out")
+
     return {"message": "Logged out successfully"}
 
 @router.post("/change-password")
 async def change_password(
     old_password: str,
     new_password: str,
+    request: Request,
     current_user = Depends(get_current_active_user),
     csrf_valid: bool = Depends(validate_csrf_token)
 ):
@@ -1329,6 +1495,19 @@ async def change_password(
                     raise column_error
 
             logger.info(f"Password changed successfully for user: {current_user['username']}")
+
+            # Log password change
+            log_audit(
+                action="Password changed",
+                user_id=current_user["id"],
+                owner_id=current_user["id"],
+                details={
+                    "username": current_user["username"],
+                    "ip_address": request.client.host if hasattr(request, "client") else None,
+                    "user_agent": request.headers.get("user-agent")
+                },
+                source="auth"
+            )
 
             # Revoke all tokens for this user
             # This is a security measure to ensure that all sessions are invalidated when the password is changed

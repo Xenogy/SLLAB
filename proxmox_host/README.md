@@ -9,6 +9,7 @@ This agent runs on Proxmox host nodes and synchronizes VM information with the A
 - Sends it to the AccountDB API
 - Runs on a schedule to keep the information up-to-date
 - Provides a REST API for manual synchronization and status checks
+- Sends logs to the central log storage system for monitoring and troubleshooting
 
 ## Installation
 
@@ -88,6 +89,8 @@ The agent is configured using environment variables. You can set these in a `.en
 | `ACCOUNTDB_NODE_ID` | Node ID in AccountDB | `1` |
 | `UPDATE_INTERVAL` | Synchronization interval in seconds | `300` |
 | `LOG_LEVEL` | Logging level | `INFO` |
+| `LOG_FORWARDING_ENABLED` | Enable log forwarding to central storage | `true` |
+| `LOG_FORWARDING_LEVEL` | Minimum level for forwarded logs | `INFO` |
 | `DEBUG` | Enable debug mode | `false` |
 
 ## API Endpoints
@@ -104,6 +107,23 @@ The agent provides the following API endpoints:
 ## Monitoring
 
 You can monitor the agent using the `/health` and `/sync/status` endpoints. The agent also logs information to stdout, which can be captured by Docker or systemd.
+
+### Centralized Logging
+
+The agent automatically sends logs to the central log system.
+
+#### Configuration
+
+Set these options in the `.env` file:
+
+```
+LOG_FORWARDING_ENABLED=true
+LOG_FORWARDING_LEVEL=INFO
+```
+
+#### Viewing Logs
+
+All logs can be viewed in the web interface at `/logs`. Filter by source (`proxmox_host`) to see only logs from this agent.
 
 ## How It Works
 

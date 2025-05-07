@@ -4,7 +4,7 @@ import type React from "react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Bot, Server, Activity, BarChart, RefreshCw, Home, Settings, Database } from "lucide-react"
+import { Bot, Server, Activity, BarChart, RefreshCw, Home, Settings, Database, Shield } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
@@ -47,30 +47,6 @@ export default function Sidebar({ className }: SidebarProps) {
               </Link>
             </Button>
             <Button
-              variant={pathname === "/automation/accounts/prime" ? "secondary" : "ghost"}
-              size="sm"
-              className="w-full justify-start pl-8"
-              asChild
-            >
-              <Link href="/automation/accounts/prime">Prime</Link>
-            </Button>
-            <Button
-              variant={pathname === "/automation/accounts/trade" ? "secondary" : "ghost"}
-              size="sm"
-              className="w-full justify-start pl-8"
-              asChild
-            >
-              <Link href="/automation/accounts/trade">Trade</Link>
-            </Button>
-            <Button
-              variant={pathname === "/automation/accounts/marketplace" ? "secondary" : "ghost"}
-              size="sm"
-              className="w-full justify-start pl-8"
-              asChild
-            >
-              <Link href="/automation/accounts/marketplace">Marketplace</Link>
-            </Button>
-            <Button
               variant={pathname === "/automation/farmlabs" ? "secondary" : "ghost"}
               size="sm"
               className="w-full justify-start"
@@ -95,7 +71,7 @@ export default function Sidebar({ className }: SidebarProps) {
               className="w-full justify-start pl-8"
               asChild
             >
-              <Link href="/automation/farmlabs/management">Management</Link>
+              <Link href="/automation/farmlabs/management" prefetch={false}>Management</Link>
             </Button>
             <Button
               variant={pathname === "/automation/farmlabs/jobs" ? "secondary" : "ghost"}
@@ -103,7 +79,18 @@ export default function Sidebar({ className }: SidebarProps) {
               className="w-full justify-start pl-8"
               asChild
             >
-              <Link href="/automation/farmlabs/jobs">Jobs</Link>
+              <Link href="/automation/farmlabs/jobs" prefetch={false}>Jobs</Link>
+            </Button>
+            <Button
+              variant={pathname === "/bans" ? "secondary" : "ghost"}
+              size="sm"
+              className="w-full justify-start"
+              asChild
+            >
+              <Link href="/bans">
+                <Shield className="mr-2 h-4 w-4" />
+                Ban Checker
+              </Link>
             </Button>
           </div>
         </div>
@@ -138,7 +125,7 @@ export default function Sidebar({ className }: SidebarProps) {
               className="w-full justify-start pl-8"
               asChild
             >
-              <Link href="/vms/proxy">Proxy Settings</Link>
+              <Link href="/vms/proxy" prefetch={false}>Proxy Settings</Link>
             </Button>
             <Button
               variant={pathname === "/vms/statistics" ? "secondary" : "ghost"}
@@ -157,7 +144,7 @@ export default function Sidebar({ className }: SidebarProps) {
               className="w-full justify-start pl-8"
               asChild
             >
-              <Link href="/vms/statistics/hw-profiler">HW Profiler</Link>
+              <Link href="/vms/statistics/hw-profiler" prefetch={false}>HW Profiler</Link>
             </Button>
             <Button
               variant={pathname === "/vms/statistics/errors" ? "secondary" : "ghost"}
@@ -165,7 +152,7 @@ export default function Sidebar({ className }: SidebarProps) {
               className="w-full justify-start pl-8"
               asChild
             >
-              <Link href="/vms/statistics/errors">Errors</Link>
+              <Link href="/vms/statistics/errors" prefetch={false}>Errors</Link>
             </Button>
             <Button
               variant={pathname === "/vms/statistics/job-tracking" ? "secondary" : "ghost"}
@@ -173,7 +160,7 @@ export default function Sidebar({ className }: SidebarProps) {
               className="w-full justify-start pl-8"
               asChild
             >
-              <Link href="/vms/statistics/job-tracking">Job Tracking</Link>
+              <Link href="/vms/statistics/job-tracking" prefetch={false}>Job Tracking</Link>
             </Button>
             <Button
               variant={pathname === "/vms/restarts" ? "secondary" : "ghost"}
@@ -181,7 +168,7 @@ export default function Sidebar({ className }: SidebarProps) {
               className="w-full justify-start"
               asChild
             >
-              <Link href="/vms/restarts">
+              <Link href="/vms/restarts" prefetch={false}>
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Dynamic Restarts
               </Link>
@@ -200,6 +187,14 @@ export default function Sidebar({ className }: SidebarProps) {
               <Settings className="mr-2 h-4 w-4" />
               Settings
             </Link>
+          </Button>
+          <Button
+            variant={pathname === "/settings/api-keys" ? "secondary" : "ghost"}
+            size="sm"
+            className="w-full justify-start pl-8"
+            asChild
+          >
+            <Link href="/settings?tab=api-keys">API Keys</Link>
           </Button>
         </div>
       </div>

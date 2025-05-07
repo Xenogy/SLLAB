@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus, Download, Upload, RefreshCw, Server, Clock, Star, MoreHorizontal, Edit, Trash, Play, Pause, Terminal, RotateCw } from "lucide-react"
+import { Plus, Download, Upload, RefreshCw, Server, Clock, Star, MoreHorizontal, Edit, Trash, Play, Pause, Terminal, RotateCw, ChevronDown } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { DataTable } from "@/components/data-table"
@@ -15,11 +15,31 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { createColumns } from "./columns"
 import { ColumnDef } from "@tanstack/react-table"
 import { useEffect, useState, useMemo } from "react"
-import { vmsAPI, VMResponse, VMStatus, proxmoxNodesAPI, ProxmoxNodeResponse } from "@/lib/api"
+import { vmsAPI, VMResponse, VMStatus, proxmoxNodesAPI, ProxmoxNodeResponse, windowsVMAgentAPI, WindowsVMAgentResponse, WindowsVMAgentStatus } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+
+// Helper function to format uptime from seconds to days, hours, minutes
+const formatUptime = (seconds: number): string => {
+  if (!seconds) return "0d 0h 0m"
+
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+
+  return `${days}d ${hours}h ${minutes}m`
+}
 
 // For debugging
 console.log("createColumns imported:", createColumns);
@@ -31,12 +51,15 @@ export type VMTableData = {
   status: VMStatus;
   ip: string;
   cpu: string;
+  cpu_cores: string;
   memory: string;
   uptime: string;
   proxmox_node_id?: number;
   proxmox_node?: string;
   source?: 'database' | 'proxmox';
   whitelist?: boolean;
+  agent_status?: WindowsVMAgentStatus;
+  agent_last_seen?: string | null;
 }
 
 export default function VMsPage() {
@@ -53,6 +76,7 @@ export default function VMsPage() {
   const [nodes, setNodes] = useState<ProxmoxNodeResponse[]>([])
   const [showProxmoxVMs, setShowProxmoxVMs] = useState(true)
   const [autoRefresh, setAutoRefresh] = useState(false)
+  const [refreshTimeout, setRefreshTimeout] = useState(30) // Default 30 seconds
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null)
   const [syncingNodes, setSyncingNodes] = useState<number[]>([])
 
@@ -76,9 +100,17 @@ export default function VMsPage() {
     name: vm.name,
     status: vm.status,
     ip: vm.ip_address || "N/A",
-    cpu: vm.cpu_cores ? `${Math.floor(Math.random() * 100)}%` : "N/A",
+    cpu: vm.status === "running"
+      ? (vm.cpu_usage_percent !== null
+        ? `${vm.cpu_usage_percent}%`
+        : (vm.cpu_cores ? "0%" : "N/A"))
+      : "0%",
+    cpu_cores: vm.cpu_cores ? `${vm.cpu_cores}` : "N/A",
     memory: vm.memory_mb ? `${(vm.memory_mb / 1024).toFixed(1)}GB/${(vm.memory_mb / 1024).toFixed(1)}GB` : "N/A",
-    uptime: vm.status === "running" ? `${Math.floor(Math.random() * 5)}d ${Math.floor(Math.random() * 24)}h ${Math.floor(Math.random() * 60)}m` : "0d 0h 0m",
+    // Format uptime from seconds to days, hours, minutes
+    uptime: vm.status === "running" && vm.uptime_seconds
+      ? formatUptime(vm.uptime_seconds)
+      : "0d 0h 0m",
     proxmox_node_id: vm.proxmox_node_id,
     proxmox_node: vm.proxmox_node,
     source: source,
@@ -133,6 +165,23 @@ export default function VMsPage() {
         }
       }
 
+      // Fetch Windows VM agent status for each VM
+      for (const vm of allVMs) {
+        try {
+          // Only check agent status for database VMs (not Proxmox live VMs)
+          if (vm.source === 'database') {
+            const agentStatus = await windowsVMAgentAPI.getAgentStatus(vm.id)
+            if (agentStatus) {
+              vm.agent_status = agentStatus.status
+              vm.agent_last_seen = agentStatus.last_seen
+            }
+          }
+        } catch (err) {
+          // If agent not found or error, leave agent_status undefined
+          console.log(`No agent found for VM ${vm.id}`)
+        }
+      }
+
       setVms(allVMs)
 
       // Calculate stats
@@ -179,11 +228,11 @@ export default function VMsPage() {
     if (autoRefresh) {
       const interval = setInterval(() => {
         loadVMs()
-      }, 30000) // Refresh every 30 seconds
+      }, refreshTimeout * 1000) // Convert seconds to milliseconds
 
       setRefreshInterval(interval)
 
-      // Clean up interval on unmount or when autoRefresh changes
+      // Clean up interval on unmount or when autoRefresh or refreshTimeout changes
       return () => {
         clearInterval(interval)
         setRefreshInterval(null)
@@ -193,137 +242,88 @@ export default function VMsPage() {
       clearInterval(refreshInterval)
       setRefreshInterval(null)
     }
-  }, [autoRefresh]) // Re-run when autoRefresh changes
+  }, [autoRefresh, refreshTimeout]) // Re-run when autoRefresh or refreshTimeout changes
 
   // Handle refresh
   const handleRefresh = () => {
     loadVMs()
   }
 
-  // Handle sync
+  // Handle sync - temporarily disabled
   const handleSync = async (nodeId: number) => {
-    if (syncingNodes.includes(nodeId)) {
-      return // Already syncing
-    }
-
-    try {
-      setSyncingNodes(prev => [...prev, nodeId])
-
-      const response = await proxmoxNodesAPI.syncNodeVMs(nodeId)
-
-      toast({
-        title: "Sync started",
-        description: response.message,
-        variant: "default"
-      })
-
-      // Wait a bit and then refresh the VMs
-      setTimeout(() => {
-        loadVMs()
-        setSyncingNodes(prev => prev.filter(id => id !== nodeId))
-      }, 5000)
-    } catch (err) {
-      console.error("Error syncing VMs:", err)
-      toast({
-        title: "Error",
-        description: "Failed to sync virtual machines",
-        variant: "destructive"
-      })
-      setSyncingNodes(prev => prev.filter(id => id !== nodeId))
-    }
+    // Show a toast message explaining that the feature is temporarily disabled
+    toast({
+      title: "Feature temporarily disabled",
+      description: "The sync feature is temporarily disabled to prevent creation of non-existent VMs. Please use the refresh button instead.",
+      variant: "default"
+    })
   }
 
-  // Handle whitelist toggle
-  const updateVMWhitelist = async (vmId: string, checked: boolean) => {
+  // State for the PowerShell command dialog
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [dialogContent, setDialogContent] = useState({
+    apiKey: '',
+    powershellCommand: '',
+    powershellScript: '',
+    vmId: '',
+    vmName: ''
+  })
+
+  // Handle agent registration
+  const handleRegisterAgent = async (vmId: string, vmName: string) => {
     try {
-      // Find the VM in the list
-      const vm = vms.find(vm => vm.id === vmId)
-      if (!vm) {
-        toast({
-          title: "Error",
-          description: "Cannot find VM with ID " + vmId,
-          variant: "destructive"
-        })
-        return
-      }
-
-      // Check if we have either proxmox_node or proxmox_node_id
-      if (!vm.proxmox_node && !vm.proxmox_node_id) {
-        toast({
-          title: "Error",
-          description: "Cannot update whitelist for this VM - no Proxmox node information",
-          variant: "destructive"
-        })
-        return
-      }
-
-      // Find the node for this VM
-      let node: ProxmoxNodeResponse | undefined;
-
-      if (vm.proxmox_node_id) {
-        // If we have the node ID, use it directly
-        node = nodes.find(node => node.id === vm.proxmox_node_id);
-      } else if (vm.proxmox_node) {
-        // Fallback to using the node name
-        node = nodes.find(node => node.name === vm.proxmox_node);
-      }
-
-      if (!node) {
-        toast({
-          title: "Error",
-          description: "Cannot find Proxmox node for this VM",
-          variant: "destructive"
-        })
-        return
-      }
-
-      // Get current whitelist
-      const whitelistResponse = await proxmoxNodesAPI.getNodeWhitelist(node.id)
-      const currentWhitelist = whitelistResponse.vmids
-
-      // Update whitelist based on checked state
-      let newWhitelist: number[]
-      const vmidNumber = parseInt(vm.id)
-
-      if (checked) {
-        // Add to whitelist if not already there
-        newWhitelist = [...currentWhitelist, vmidNumber]
-      } else {
-        // Remove from whitelist
-        newWhitelist = currentWhitelist.filter(id => id !== vmidNumber)
-      }
-
-      // Remove duplicates
-      newWhitelist = [...new Set(newWhitelist)]
-
-      // Update whitelist on server
-      await proxmoxNodesAPI.setVMIDWhitelist({
-        node_id: node.id,
-        vmids: newWhitelist
-      })
-
-      // Update local state
-      setVms(vms.map(v =>
-        v.id === vmId
-          ? { ...v, whitelist: checked }
-          : v
-      ))
-
+      // Show loading toast
       toast({
-        title: "Whitelist updated",
-        description: `VM ${vm.name} ${checked ? 'added to' : 'removed from'} whitelist`,
+        title: "Registering agent...",
+        description: "Please wait while we register the Windows VM agent.",
         variant: "default"
       })
 
+      // Call the API to register the agent
+      const response = await windowsVMAgentAPI.registerAgent(vmId, vmName)
+
+      // Set dialog content
+      setDialogContent({
+        apiKey: response.api_key,
+        powershellCommand: response.powershell_command,
+        powershellScript: response.powershell_script,
+        vmId: vmId,
+        vmName: vmName || `VM ${vmId}`
+      })
+
+      // Open the dialog
+      setIsDialogOpen(true)
+
+      // Show success toast
+      toast({
+        title: "Agent registered successfully",
+        description: "Please use the PowerShell command to install the agent on your Windows VM.",
+        variant: "default"
+      })
+
+      // Refresh VM list to show updated agent status
+      loadVMs()
     } catch (err) {
-      console.error("Error updating whitelist:", err)
+      console.error("Error registering agent:", err)
       toast({
         title: "Error",
-        description: "Failed to update whitelist",
+        description: "Failed to register Windows VM agent. Please try again.",
         variant: "destructive"
       })
     }
   }
+
+  // Handle copy to clipboard
+  const handleCopy = (text: string, successMessage: string) => {
+    navigator.clipboard.writeText(text)
+    toast({
+      title: "Copied!",
+      description: successMessage,
+      variant: "default"
+    })
+  }
+
+  // Whitelist functionality removed - now managed on the Proxmox Nodes page
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -348,6 +348,26 @@ export default function VMsPage() {
               <Clock className="mr-1 h-4 w-4" />
               Auto-refresh
             </Label>
+
+            {autoRefresh && (
+              <div className="ml-2">
+                <Select
+                  value={refreshTimeout.toString()}
+                  onValueChange={(value) => setRefreshTimeout(parseInt(value))}
+                >
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue placeholder="Refresh every" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 seconds</SelectItem>
+                    <SelectItem value="15">15 seconds</SelectItem>
+                    <SelectItem value="30">30 seconds</SelectItem>
+                    <SelectItem value="60">1 minute</SelectItem>
+                    <SelectItem value="300">5 minutes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -363,22 +383,7 @@ export default function VMsPage() {
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
-            {nodes.length > 0 && (
-              <div className="flex items-center gap-1">
-                {nodes.map(node => (
-                  <Button
-                    key={node.id}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleSync(node.id)}
-                    disabled={syncingNodes.includes(node.id)}
-                  >
-                    <RotateCw className={`mr-1 h-3 w-3 ${syncingNodes.includes(node.id) ? 'animate-spin' : ''}`} />
-                    Sync {node.name}
-                  </Button>
-                ))}
-              </div>
-            )}
+            {/* Sync button temporarily disabled to prevent creation of non-existent VMs */}
             <Button
               variant="ghost"
               size="icon"
@@ -469,7 +474,6 @@ export default function VMsPage() {
               {/* Debug info */}
               {console.log("About to render DataTable")}
               {console.log("createColumns:", createColumns)}
-              {console.log("updateVMWhitelist:", updateVMWhitelist)}
               {console.log("vms:", vms)}
 
               {/* Create columns directly without useMemo */}
@@ -502,6 +506,10 @@ export default function VMsPage() {
                     header: "CPU Usage",
                   },
                   {
+                    accessorKey: "cpu_cores",
+                    header: "CPU Cores",
+                  },
+                  {
                     accessorKey: "memory",
                     header: "Memory",
                   },
@@ -530,27 +538,77 @@ export default function VMsPage() {
                     },
                   },
                   {
-                    accessorKey: "whitelist",
-                    header: "Whitelist",
+                    id: "agent_status",
+                    header: "VM Agent",
                     cell: ({ row }) => {
-                      const whitelist = row.getValue("whitelist") as boolean || false;
                       const vm = row.original;
+                      const agentStatus = vm.agent_status;
+                      const lastSeen = vm.agent_last_seen;
+
+                      // Only show for database VMs, not Proxmox live VMs
+                      if (vm.source === 'proxmox') {
+                        return <span className="text-muted-foreground">N/A</span>;
+                      }
+
+                      if (!agentStatus) {
+                        return (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => handleRegisterAgent(vm.id, vm.name)}
+                          >
+                            Register Agent
+                          </Button>
+                        );
+                      }
+
+                      // Determine badge color based on status
+                      let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "outline";
+                      if (agentStatus === "running") {
+                        badgeVariant = "default";
+                      } else if (agentStatus === "stopped") {
+                        badgeVariant = "secondary";
+                      } else if (agentStatus === "error") {
+                        badgeVariant = "destructive";
+                      }
+
+                      // Format last seen time if available
+                      let lastSeenText = "Never";
+                      if (lastSeen) {
+                        const lastSeenDate = new Date(lastSeen);
+                        const now = new Date();
+                        const diffMs = now.getTime() - lastSeenDate.getTime();
+                        const diffMins = Math.floor(diffMs / 60000);
+
+                        if (diffMins < 1) {
+                          lastSeenText = "Just now";
+                        } else if (diffMins < 60) {
+                          lastSeenText = `${diffMins}m ago`;
+                        } else if (diffMins < 1440) {
+                          const hours = Math.floor(diffMins / 60);
+                          lastSeenText = `${hours}h ago`;
+                        } else {
+                          const days = Math.floor(diffMins / 1440);
+                          lastSeenText = `${days}d ago`;
+                        }
+                      }
+
                       return (
-                        <div className="flex items-center">
-                          {whitelist ? (
-                            <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                          ) : (
-                            <Star className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex flex-col">
+                          <Badge variant={badgeVariant}>
+                            {agentStatus}
+                          </Badge>
+                          {lastSeen && (
+                            <span className="text-xs text-muted-foreground mt-1">
+                              Last seen: {lastSeenText}
+                            </span>
                           )}
-                          <Switch
-                            checked={whitelist}
-                            className="ml-2"
-                            onCheckedChange={(checked) => updateVMWhitelist(vm.id, checked)}
-                          />
                         </div>
                       );
                     },
                   },
+                  // Whitelist column removed - now managed on the Proxmox Nodes page
                   {
                     id: "actions",
                     cell: ({ row }) => {
@@ -606,6 +664,92 @@ export default function VMsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* PowerShell Command Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Windows VM Agent Installation</DialogTitle>
+            <DialogDescription>
+              Run the following PowerShell command on your Windows VM to install the agent.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium mb-2">VM Information</h3>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <span className="font-semibold">VM ID:</span> {dialogContent.vmId}
+                </div>
+                <div>
+                  <span className="font-semibold">VM Name:</span> {dialogContent.vmName}
+                </div>
+                <div>
+                  <span className="font-semibold">API Key:</span>
+                  <code className="ml-1 bg-gray-100 dark:bg-gray-800 p-1 rounded text-xs">{dialogContent.apiKey}</code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-2 h-6 px-2"
+                    onClick={() => handleCopy(dialogContent.apiKey, "API key copied to clipboard")}
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium mb-2">PowerShell Command</h3>
+              <div className="relative">
+                <Textarea
+                  readOnly
+                  value={dialogContent.powershellCommand}
+                  className="font-mono text-xs h-20"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="absolute top-2 right-2"
+                  onClick={() => handleCopy(dialogContent.powershellCommand, "PowerShell command copied to clipboard")}
+                >
+                  Copy Command
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Run this command in PowerShell as Administrator on your Windows VM.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium mb-2">PowerShell Script (Alternative)</h3>
+              <div className="relative">
+                <Textarea
+                  readOnly
+                  value={dialogContent.powershellScript}
+                  className="font-mono text-xs h-40"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="absolute top-2 right-2"
+                  onClick={() => handleCopy(dialogContent.powershellScript, "PowerShell script copied to clipboard")}
+                >
+                  Copy Script
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Alternatively, you can save this as a .ps1 file and run it as Administrator on your Windows VM.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -9,19 +9,36 @@ type RequestOptions = {
   isPublic?: boolean  // Flag to indicate if the endpoint is public (no auth required)
 }
 
-// Get auth token from localStorage or a secure storage mechanism
+// Get auth token from localStorage or cookie
 const getAuthToken = (): string | null => {
   if (typeof window !== "undefined") {
+    // First try to get token from localStorage
     const token = localStorage.getItem(AUTH_CONFIG.tokenKey)
-    if (!token) {
-      console.warn('No auth token found in localStorage')
-      return null
+    if (token) {
+      // Log token for debugging (first 10 chars only for security)
+      const tokenPreview = token.substring(0, 10) + '...'
+      console.log(`Retrieved token from localStorage: ${tokenPreview}`)
+      return token
     }
 
-    // Log token for debugging (first 10 chars only for security)
-    const tokenPreview = token.substring(0, 10) + '...'
-    console.log(`Retrieved token from localStorage: ${tokenPreview}`)
-    return token
+    // If not in localStorage, try to get from cookie
+    const cookies = document.cookie.split(';').map(cookie => cookie.trim())
+    const tokenCookie = cookies.find(cookie => cookie.startsWith(`${AUTH_CONFIG.tokenKey}=`))
+    if (tokenCookie) {
+      const cookieToken = tokenCookie.split('=')[1]
+      if (cookieToken) {
+        // Store in localStorage for future use
+        localStorage.setItem(AUTH_CONFIG.tokenKey, cookieToken)
+
+        // Log token for debugging (first 10 chars only for security)
+        const tokenPreview = cookieToken.substring(0, 10) + '...'
+        console.log(`Retrieved token from cookie: ${tokenPreview}`)
+        return cookieToken
+      }
+    }
+
+    console.warn('No auth token found in localStorage or cookies')
+    return null
   }
   console.warn('Window object not available (SSR context)')
   return null
@@ -52,7 +69,8 @@ export async function fetchAPI<T>(endpoint: string, options: RequestOptions = {}
           endpoint.startsWith('/hardware') ||
           endpoint.startsWith('/steam') ||
           endpoint.startsWith('/account-status') ||
-          endpoint.startsWith('/upload')) {
+          endpoint.startsWith('/upload') ||
+          endpoint.startsWith('/logs')) {  // Add logs endpoint to use token as query param
         params.token = token
       }
     } else {
@@ -60,6 +78,17 @@ export async function fetchAPI<T>(endpoint: string, options: RequestOptions = {}
       // If this is not a public endpoint and we don't have a token, we might want to redirect to login
       if (endpoint !== '/auth/signup-status' && !endpoint.startsWith('/auth/register')) {
         console.warn('Non-public endpoint requested without authentication token')
+
+        // For debugging - check if we have a cookie with the token
+        if (typeof document !== 'undefined') {
+          const cookies = document.cookie.split(';').map(cookie => cookie.trim())
+          const tokenCookie = cookies.find(cookie => cookie.startsWith(`${AUTH_CONFIG.tokenKey}=`))
+          if (tokenCookie) {
+            console.log(`Found token cookie: ${tokenCookie.substring(0, 20)}...`)
+          } else {
+            console.warn('No token cookie found either')
+          }
+        }
       }
     }
   } else {
@@ -374,8 +403,10 @@ export type VMResponse = {
   ip_address: string | null;
   status: VMStatus;
   cpu_cores: number | null;
+  cpu_usage_percent: number | null;
   memory_mb: number | null;
   disk_gb: number | null;
+  uptime_seconds: number | null;
   proxmox_node_id: number | null;
   proxmox_node: string | null;
   template_id: number | null;
@@ -405,8 +436,10 @@ export type VMCreateParams = {
   ip_address?: string;
   status?: VMStatus;
   cpu_cores?: number;
+  cpu_usage_percent?: number;
   memory_mb?: number;
   disk_gb?: number;
+  uptime_seconds?: number;
   proxmox_node_id?: number;
   proxmox_node?: string;  // For backward compatibility
   template_id?: number;
@@ -503,6 +536,120 @@ export type VMIDWhitelistParams = {
   vmids: number[];
 }
 
+// User Settings types
+export type UserSettings = {
+  id: number;
+  user_id: number;
+  theme: 'light' | 'dark' | 'system';
+  language: string;
+  timezone: string;
+  date_format: string;
+  time_format: '12h' | '24h';
+  notifications_enabled: boolean;
+  email_notifications: boolean;
+  auto_refresh_interval: number;
+  items_per_page: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type UserSettingsUpdateParams = Partial<Omit<UserSettings, 'id' | 'user_id' | 'created_at' | 'updated_at'>>;
+
+// API Key types
+export type APIKey = {
+  id: number;
+  user_id: number;
+  key_name: string;
+  api_key_prefix: string;
+  scopes: string[];
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+  revoked: boolean;
+  key_type?: string;
+  resource_id?: number;
+}
+
+export type APIKeyWithFullKey = APIKey & {
+  api_key: string;
+}
+
+export type APIKeyCreateParams = {
+  key_name: string;
+  key_type?: string;
+  resource_id?: number;
+  expires_in_days?: number;
+  scopes?: string[];
+}
+
+export type APIKeyListResponse = {
+  api_keys: APIKey[];
+  total: number;
+}
+
+export type ResourceAPIKeyCreateParams = {
+  resource_type: string;
+  resource_id: number;
+}
+
+// API endpoints for Settings
+export const settingsAPI = {
+  // Get user settings
+  getUserSettings: (): Promise<UserSettings> =>
+    fetchAPI<UserSettings>(`/settings/user`),
+
+  // Update user settings
+  updateUserSettings: (settings: UserSettingsUpdateParams): Promise<UserSettings> =>
+    fetchAPI<UserSettings>(`/settings/user`, {
+      method: "PATCH",
+      body: settings,
+    }),
+
+  // List API keys
+  listAPIKeys: (limit: number = 10, offset: number = 0, includeRevoked: boolean = false): Promise<APIKeyListResponse> =>
+    fetchAPI<APIKeyListResponse>(`/settings/api-keys`, {
+      params: { limit, offset, include_revoked: includeRevoked },
+    }),
+
+  // Create API key
+  createAPIKey: (params: APIKeyCreateParams): Promise<APIKeyWithFullKey> =>
+    fetchAPI<APIKeyWithFullKey>(`/settings/api-keys`, {
+      method: "POST",
+      body: params,
+    }),
+
+  // Revoke API key
+  revokeAPIKey: (keyId: number): Promise<APIKey> =>
+    fetchAPI<APIKey>(`/settings/api-keys/${keyId}`, {
+      method: "DELETE",
+    }),
+
+  // List resource API keys
+  listResourceAPIKeys: (
+    resourceType: string,
+    resourceId: number,
+    limit: number = 10,
+    offset: number = 0,
+    includeRevoked: boolean = false
+  ): Promise<APIKeyListResponse> =>
+    fetchAPI<APIKeyListResponse>(`/settings/resource-api-keys`, {
+      params: {
+        resource_type: resourceType,
+        resource_id: resourceId,
+        limit,
+        offset,
+        include_revoked: includeRevoked
+      },
+    }),
+
+  // Create a resource API key
+  createResourceAPIKey: (params: ResourceAPIKeyCreateParams): Promise<APIKeyWithFullKey> =>
+    fetchAPI<APIKeyWithFullKey>(`/settings/resource-api-keys`, {
+      method: "POST",
+      body: params,
+    }),
+}
+
 // API endpoints for Proxmox Nodes
 export const proxmoxNodesAPI = {
   // Get Proxmox Nodes with pagination and filtering
@@ -563,5 +710,296 @@ export const proxmoxNodesAPI = {
   syncNodeVMs: (nodeId: number): Promise<{ success: boolean, message: string }> =>
     fetchAPI<{ success: boolean, message: string }>(`/proxmox-nodes/${nodeId}/sync-vms`, {
       method: "POST",
+    }),
+}
+
+// Timeseries types
+export type TimeseriesDataPoint = {
+  timestamp: string;
+  value: number;
+}
+
+export type TimeseriesMetric = {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string;
+  unit: string;
+  data_type: string;
+}
+
+export type TimeseriesCategory = {
+  id: number;
+  name: string;
+  description: string;
+  metrics: TimeseriesMetric[];
+}
+
+export type TimeseriesParams = {
+  start_time?: string;
+  end_time?: string;
+  period?: 'raw' | 'hourly' | 'daily' | 'weekly' | 'monthly';
+  entity_type?: string;
+  entity_id?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export type TimeseriesResponse = {
+  metric: string;
+  data: TimeseriesDataPoint[];
+  start_time: string;
+  end_time: string;
+  period: string;
+}
+
+export type TimeseriesStatistics = {
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  sum: number | null;
+  count: number;
+}
+
+export type TimeseriesStatisticsResponse = {
+  metric: string;
+  statistics: TimeseriesStatistics;
+  start_time: string;
+  end_time: string;
+  entity_type: string | null;
+  entity_id: string | null;
+}
+
+export type TimeseriesSystemOverviewResponse = {
+  cpu_usage: TimeseriesDataPoint[];
+  memory_usage: TimeseriesDataPoint[];
+  disk_usage: TimeseriesDataPoint[];
+  vm_count: TimeseriesDataPoint[];
+  account_count: TimeseriesDataPoint[];
+  period: string;
+  start_time: string;
+  end_time: string;
+}
+
+// API endpoints for Timeseries
+// Windows VM Agent types
+export type WindowsVMAgentStatus = 'registered' | 'running' | 'stopped' | 'error';
+
+export type WindowsVMAgentResponse = {
+  vm_id: string;
+  vm_name: string | null;
+  status: WindowsVMAgentStatus;
+  ip_address: string | null;
+  cpu_usage_percent: number | null;
+  memory_usage_percent: number | null;
+  disk_usage_percent: number | null;
+  uptime_seconds: number | null;
+  last_seen: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WindowsVMAgentListParams = {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  status?: WindowsVMAgentStatus;
+}
+
+export type WindowsVMAgentListResponse = {
+  agents: WindowsVMAgentResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// API endpoints for Windows VM Agent
+export const windowsVMAgentAPI = {
+  // Get agent status for a specific VM
+  getAgentStatus: (vmId: string): Promise<WindowsVMAgentResponse> =>
+    fetchAPI<WindowsVMAgentResponse>(`/windows-vm-agent/status/${vmId}`),
+
+  // Get all agents with pagination and filtering
+  getAgents: (params: WindowsVMAgentListParams = {}): Promise<WindowsVMAgentListResponse> =>
+    fetchAPI<WindowsVMAgentListResponse>(`/windows-vm-agent/agents`, {
+      params: params as Record<string, string | number | boolean>,
+    }),
+
+  // Register a new Windows VM agent
+  registerAgent: (vmId: string, vmName?: string): Promise<{
+    vm_id: string;
+    api_key: string;
+    message: string;
+    powershell_command: string;
+    powershell_script: string;
+  }> =>
+    fetchAPI(`/windows-vm-agent/register`, {
+      method: 'POST',
+      params: {
+        vm_id: vmId,
+        ...(vmName ? { vm_name: vmName } : {}),
+      },
+    }),
+}
+
+// Types for ban check API
+export interface BanCheckTaskParams {
+  limit?: number;
+  offset?: number;
+  status?: string;
+}
+
+export interface BanCheckTask {
+  task_id: string;
+  status: string;
+  message?: string;
+  progress?: number;
+  results?: BanCheckResult[];
+  proxy_stats?: any;
+  created_at?: string;
+  updated_at?: string;
+  owner_id?: number;
+}
+
+export interface BanCheckResult {
+  steam_id: string;
+  status_summary: string;
+  details: string;
+  proxy_used?: string;
+  batch_id?: any;
+}
+
+export interface BanCheckTaskListResponse {
+  tasks: BanCheckTask[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// API endpoints for ban checker
+export const banCheckAPI = {
+  // Check Steam IDs for bans
+  checkSteamIDs: (steamIDs: string[], options: any = {}): Promise<BanCheckTask> => {
+    const formData = new FormData();
+    steamIDs.forEach(id => formData.append('steam_ids', id));
+
+    // Add proxy list if provided
+    if (options.proxy_list_str) formData.append('proxy_list_str', options.proxy_list_str);
+
+    // If auto-balancing is enabled, don't send the parameters
+    if (!options.use_auto_balancing) {
+      // Add optional parameters
+      if (options.logical_batch_size) formData.append('logical_batch_size', options.logical_batch_size.toString());
+      if (options.max_concurrent_batches) formData.append('max_concurrent_batches', options.max_concurrent_batches.toString());
+      if (options.max_workers_per_batch) formData.append('max_workers_per_batch', options.max_workers_per_batch.toString());
+      if (options.inter_request_submit_delay) formData.append('inter_request_submit_delay', options.inter_request_submit_delay.toString());
+      if (options.max_retries_per_url) formData.append('max_retries_per_url', options.max_retries_per_url.toString());
+      if (options.retry_delay_seconds) formData.append('retry_delay_seconds', options.retry_delay_seconds.toString());
+    }
+
+    const token = getAuthToken();
+    return fetch(`${API_CONFIG.baseUrl}/ban-check/check/steamids`, {
+      method: "POST",
+      body: formData,
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }).then(res => {
+      if (!res.ok) throw new Error("Failed to submit Steam IDs for ban check");
+      return res.json();
+    });
+  },
+
+  // Check CSV file for bans
+  checkCSV: (file: File, steamIdColumn: string, options: any = {}): Promise<BanCheckTask> => {
+    const formData = new FormData();
+    formData.append('csv_file', file);
+    formData.append('steam_id_column', steamIdColumn);
+
+    // Add proxy list if provided
+    if (options.proxy_list_str) formData.append('proxy_list_str', options.proxy_list_str);
+
+    // If auto-balancing is enabled, don't send the parameters
+    if (!options.use_auto_balancing) {
+      // Add optional parameters
+      if (options.logical_batch_size) formData.append('logical_batch_size', options.logical_batch_size.toString());
+      if (options.max_concurrent_batches) formData.append('max_concurrent_batches', options.max_concurrent_batches.toString());
+      if (options.max_workers_per_batch) formData.append('max_workers_per_batch', options.max_workers_per_batch.toString());
+      if (options.inter_request_submit_delay) formData.append('inter_request_submit_delay', options.inter_request_submit_delay.toString());
+      if (options.max_retries_per_url) formData.append('max_retries_per_url', options.max_retries_per_url.toString());
+      if (options.retry_delay_seconds) formData.append('retry_delay_seconds', options.retry_delay_seconds.toString());
+    }
+
+    const token = getAuthToken();
+    return fetch(`${API_CONFIG.baseUrl}/ban-check/check/csv`, {
+      method: "POST",
+      body: formData,
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }).then(res => {
+      if (!res.ok) throw new Error("Failed to submit CSV for ban check");
+      return res.json();
+    });
+  },
+
+  // Get list of tasks
+  getTasks: (params: BanCheckTaskParams = {}): Promise<BanCheckTaskListResponse> =>
+    fetchAPI<BanCheckTaskListResponse>(`/ban-check/tasks`, {
+      params: {
+        limit: 50, // Default to a higher limit to get more tasks
+        ...params as Record<string, string | number | boolean>,
+      },
+    }),
+
+  // Get task by ID
+  getTask: (taskId: string): Promise<BanCheckTask> =>
+    fetchAPI<BanCheckTask>(`/ban-check/tasks/${taskId}`),
+};
+
+export const timeseriesAPI = {
+  // Get available metrics
+  getMetrics: (): Promise<TimeseriesCategory[]> =>
+    fetchAPI<TimeseriesCategory[]>(`/timeseries/metrics`),
+
+  // Get timeseries data for a specific metric
+  getMetricData: (metricName: string, params: TimeseriesParams = {}): Promise<TimeseriesResponse> =>
+    fetchAPI<TimeseriesResponse>(`/timeseries/data/${metricName}`, {
+      params: params as Record<string, string | number | boolean>,
+    }),
+
+  // Get latest value for a specific metric
+  getLatestMetricValue: (metricName: string, entityType?: string, entityId?: string): Promise<{ value: number | null }> =>
+    fetchAPI<{ value: number | null }>(`/timeseries/latest/${metricName}`, {
+      params: {
+        ...(entityType && { entity_type: entityType }),
+        ...(entityId && { entity_id: entityId }),
+      },
+    }),
+
+  // Get statistics for a specific metric
+  getMetricStatistics: (metricName: string, params: TimeseriesParams = {}): Promise<TimeseriesStatisticsResponse> =>
+    fetchAPI<TimeseriesStatisticsResponse>(`/timeseries/statistics/${metricName}`, {
+      params: params as Record<string, string | number | boolean>,
+    }),
+
+  // Get system overview metrics
+  getSystemOverview: (period: string = 'hourly', duration: string = 'day'): Promise<TimeseriesSystemOverviewResponse> => {
+    console.log(`API call: getSystemOverview(${period}, ${duration})`)
+    return fetchAPI<TimeseriesSystemOverviewResponse>(`/timeseries/system/overview`, {
+      params: { period, duration },
+    }).then(response => {
+      console.log('System overview API response:', response)
+      return response
+    }).catch(error => {
+      console.error('System overview API error:', error)
+      throw error
+    })
+  },
+
+  // Get VM metrics
+  getVMMetrics: (vmId: number, metricName: string, params: TimeseriesParams = {}): Promise<TimeseriesResponse> =>
+    fetchAPI<TimeseriesResponse>(`/timeseries/vm/${vmId}/${metricName}`, {
+      params: params as Record<string, string | number | boolean>,
     }),
 }

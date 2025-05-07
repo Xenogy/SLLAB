@@ -6,6 +6,7 @@ import asyncio
 import time
 import signal
 import sys
+import logging
 from typing import Dict, Any, List
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,12 +17,13 @@ import uvicorn
 from config import config
 from proxmox_client import ProxmoxClient
 from accountdb_client import AccountDBClient
+from log_client import LogClient
 
 # Configure logger
 logger.remove()
 logger.add(
     sys.stdout,
-    level="DEBUG",  # Force DEBUG level for more verbose logging
+    level=config.log_level,  # Use configured log level
     format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
 )
 
@@ -41,9 +43,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Create log client first
+log_client = None
+if config.logging.enabled:
+    # Initialize with placeholder values, will be properly initialized after connection verification
+    log_client = LogClient(
+        api_url=config.accountdb.url,
+        api_key=config.accountdb.api_key,
+        node_id=config.accountdb.node_id
+    )
+
+    # Add loguru sink for forwarding logs to central storage
+    log_level = getattr(logging, config.logging.level, logging.INFO)
+    logger.add(
+        log_client.create_loguru_sink(),
+        level=config.logging.level,
+        format="{message}"  # Simplified format since details are handled in the sink
+    )
+    logger.info(f"Log forwarding enabled with level {config.logging.level}")
+
 # Create clients
 proxmox_client = ProxmoxClient()
-accountdb_client = AccountDBClient()
+accountdb_client = AccountDBClient(log_client=log_client)
 
 # Global variables
 sync_task = None
@@ -201,7 +222,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Run when the application shuts down."""
-    global is_running, sync_task
+    global is_running, sync_task, log_client
 
     logger.info("Shutting down Proxmox Host Agent")
 
@@ -215,6 +236,12 @@ async def shutdown_event():
             pass
 
     logger.info("Scheduled sync task stopped")
+
+    # Shutdown log client
+    if log_client:
+        logger.info("Shutting down log client")
+        await log_client.shutdown()
+        logger.info("Log client shutdown complete")
 
 @app.get("/health")
 async def health_check():
@@ -322,6 +349,12 @@ async def get_config():
         "accountdb": {
             "url": config.accountdb.url,
             "owner_id": config.accountdb.owner_id,
+        },
+        "logging": {
+            "enabled": config.logging.enabled,
+            "level": config.logging.level,
+            "batch_size": config.logging.batch_size,
+            "flush_interval": config.logging.flush_interval,
         },
         "update_interval": config.update_interval,
         "log_level": config.log_level,
