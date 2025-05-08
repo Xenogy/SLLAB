@@ -1,0 +1,92 @@
+powershell -ExecutionPolicy Bypass -Command "
+# Set TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+Write-Host 'Starting Windows VM Agent installation...'
+
+# Define variables explicitly
+$downloadUrl = 'http://10.0.0.130:8080/downloads/windows_vm_agent.zip'
+$vmId = 'YOUR_VM_ID'
+$apiKey = 'YOUR_API_KEY'
+$serverUrl = 'http://10.0.0.130:8080'
+$installDir = 'C:\CsBotAgent'
+$tempDir = $env:TEMP
+$agentZip = Join-Path $tempDir 'windows_vm_agent.zip'
+$extractDir = Join-Path $tempDir 'vm_agent_extract'
+
+Write-Host 'Downloading Windows VM Agent...'
+try {
+    # Use simple WebClient with explicit parameters
+    $webClient = New-Object System.Net.WebClient
+    Write-Host ('Downloading from: ' + $downloadUrl)
+    Write-Host ('Saving to: ' + $agentZip)
+    $webClient.DownloadFile($downloadUrl, $agentZip)
+    Write-Host 'Download completed successfully.'
+} catch [System.Exception] {
+    $errorMessage = $_.Exception.Message
+    Write-Host ('Error downloading file: ' + $errorMessage)
+    exit 1
+}
+
+Write-Host 'Extracting files...'
+try {
+    # Create installation directory
+    if (-not (Test-Path $installDir)) {
+        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    }
+
+    # Clean up extract directory if it exists
+    if (Test-Path $extractDir) {
+        Remove-Item -Path $extractDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+
+    # Extract the ZIP file
+    Expand-Archive -Path $agentZip -DestinationPath $extractDir -Force
+
+    # Find the agent directory
+    $dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
+    if ($null -ne $dirInfo) {
+        $agentDir = Join-Path $dirInfo.FullName 'windows_vm_agent'
+        if (Test-Path $agentDir) {
+            Write-Host 'Found windows_vm_agent directory in ZIP.'
+            Copy-Item -Path "$agentDir\*" -Destination $installDir -Recurse -Force
+        } else {
+            Write-Host 'Using repository root directory.'
+            Copy-Item -Path "$($dirInfo.FullName)\*" -Destination $installDir -Recurse -Force
+        }
+    } else {
+        Write-Host 'Using extract directory root.'
+        Copy-Item -Path "$extractDir\*" -Destination $installDir -Recurse -Force
+    }
+
+    Write-Host 'Files extracted successfully.'
+} catch [System.Exception] {
+    $errorMessage = $_.Exception.Message
+    Write-Host ('Error extracting files: ' + $errorMessage)
+    exit 1
+}
+
+Write-Host 'Creating configuration file...'
+try {
+    # Create config content without using string formatting
+    $configContent = 'General:
+  VMIdentifier: "' + $vmId + '"
+  APIKey: "' + $apiKey + '"
+  ManagerBaseURL: "' + $serverUrl + '"
+  ScriptsPath: "' + $installDir + '\ActionScripts"
+  LoggingEnabled: true
+  LogLevel: "INFO"'
+
+    $configPath = Join-Path $installDir 'config.yaml'
+    Set-Content -Path $configPath -Value $configContent
+    Write-Host ('Configuration file created successfully at: ' + $configPath)
+} catch [System.Exception] {
+    $errorMessage = $_.Exception.Message
+    Write-Host ('Error creating configuration file: ' + $errorMessage)
+    exit 1
+}
+
+Write-Host 'Windows VM Agent installed successfully!' -ForegroundColor Green
+Write-Host ('Installation Directory: ' + $installDir)
+"
