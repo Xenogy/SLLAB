@@ -74,7 +74,88 @@ if (-not $pythonInstalled) {
 
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $pythonUrl -OutFile $pythonInstaller
+
+        # Check if BITS module is available
+        $useBITS = $false
+        try {
+            # Check if BITS module is available
+            if (Get-Module -ListAvailable -Name BitsTransfer) {
+                $useBITS = $true
+                Write-Output "Using BITS for optimal Python installer download performance..."
+                Import-Module BitsTransfer
+            } else {
+                Write-Output "BITS module not available, falling back to WebClient for Python installer download..."
+            }
+        } catch {
+            Write-Output "Error checking for BITS module, falling back to WebClient for Python installer download: $_"
+        }
+
+        if ($useBITS) {
+            # Use BITS for fastest download with resume capability
+            try {
+                # Remove any existing BITS transfer with the same name
+                Get-BitsTransfer -Name "PythonInstallerDownload" -ErrorAction SilentlyContinue | Remove-BitsTransfer
+
+                # Start the BITS transfer
+                Start-BitsTransfer -Source $pythonUrl -Destination $pythonInstaller -DisplayName "Python Installer Download" -Description "Downloading Python Installer" -Asynchronous -TransferType Download -Priority High
+
+                # Get the BITS transfer
+                $bitsJob = Get-BitsTransfer -Name "PythonInstallerDownload"
+
+                # Wait for the download to complete with progress
+                while ($bitsJob.JobState -eq "Transferring" -or $bitsJob.JobState -eq "Connecting") {
+                    $percentComplete = 0
+                    if ($bitsJob.BytesTotal -gt 0) {
+                        $percentComplete = [int](($bitsJob.BytesTransferred * 100) / $bitsJob.BytesTotal)
+                    }
+
+                    Write-Progress -Activity "Downloading Python Installer" -Status "$percentComplete% Complete" -PercentComplete $percentComplete
+                    Start-Sleep -Seconds 1
+                    $bitsJob = Get-BitsTransfer -Name "PythonInstallerDownload"
+                }
+
+                # Complete the BITS transfer
+                if ($bitsJob.JobState -eq "Transferred") {
+                    Complete-BitsTransfer -BitsJob $bitsJob
+                    Write-Progress -Activity "Downloading Python Installer" -Completed
+                    Write-Output "Python installer download completed successfully using BITS."
+                } else {
+                    Write-Output "BITS transfer failed with state: $($bitsJob.JobState)"
+                    throw "BITS transfer failed: $($bitsJob.ErrorDescription)"
+                }
+            } catch {
+                Write-Output "Error using BITS for Python installer download, falling back to WebClient: $_"
+                $useBITS = $false
+            }
+        }
+
+        if (-not $useBITS) {
+            # Use System.Net.WebClient as fallback
+            Write-Output "Using WebClient for Python installer download..."
+            $webClient = New-Object System.Net.WebClient
+
+            # Add event handler for download progress
+            $webClient.DownloadProgressChanged = {
+                $percent = $_.ProgressPercentage
+                if ($percent % 10 -eq 0) {  # Only show every 10%
+                    Write-Progress -Activity "Downloading Python Installer" -Status "$percent% Complete" -PercentComplete $percent
+                }
+            }
+
+            # Add event handler for download completion
+            $webClient.DownloadFileCompleted = {
+                Write-Progress -Activity "Downloading Python Installer" -Completed
+                Write-Output "Python installer download completed."
+            }
+
+            # Start the download
+            $webClient.DownloadFileAsync($pythonUrl, $pythonInstaller)
+
+            # Wait for download to complete
+            while ($webClient.IsBusy) {
+                Start-Sleep -Milliseconds 100
+            }
+        }
 
         Write-Output "Installing Python 3.10..."
         Start-Process -FilePath $pythonInstaller -ArgumentList "/quiet", "InstallAllUsers=1", "PrependPath=1" -Wait
@@ -98,7 +179,88 @@ $agentZip = Join-Path $env:TEMP "windows_vm_agent.zip"
 
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $agentZipUrl -OutFile $agentZip
+
+    # Check if BITS module is available
+    $useBITS = $false
+    try {
+        # Check if BITS module is available
+        if (Get-Module -ListAvailable -Name BitsTransfer) {
+            $useBITS = $true
+            Write-Output "Using BITS for optimal download performance..."
+            Import-Module BitsTransfer
+        } else {
+            Write-Output "BITS module not available, falling back to WebClient..."
+        }
+    } catch {
+        Write-Output "Error checking for BITS module, falling back to WebClient: $_"
+    }
+
+    if ($useBITS) {
+        # Use BITS for fastest download with resume capability
+        try {
+            # Remove any existing BITS transfer with the same name
+            Get-BitsTransfer -Name "WindowsVMAgentDownload" -ErrorAction SilentlyContinue | Remove-BitsTransfer
+
+            # Start the BITS transfer
+            Start-BitsTransfer -Source $agentZipUrl -Destination $agentZip -DisplayName "Windows VM Agent Download" -Description "Downloading Windows VM Agent" -Asynchronous -TransferType Download -Priority High
+
+            # Get the BITS transfer
+            $bitsJob = Get-BitsTransfer -Name "WindowsVMAgentDownload"
+
+            # Wait for the download to complete with progress
+            while ($bitsJob.JobState -eq "Transferring" -or $bitsJob.JobState -eq "Connecting") {
+                $percentComplete = 0
+                if ($bitsJob.BytesTotal -gt 0) {
+                    $percentComplete = [int](($bitsJob.BytesTransferred * 100) / $bitsJob.BytesTotal)
+                }
+
+                Write-Progress -Activity "Downloading Windows VM Agent" -Status "$percentComplete% Complete" -PercentComplete $percentComplete
+                Start-Sleep -Seconds 1
+                $bitsJob = Get-BitsTransfer -Name "WindowsVMAgentDownload"
+            }
+
+            # Complete the BITS transfer
+            if ($bitsJob.JobState -eq "Transferred") {
+                Complete-BitsTransfer -BitsJob $bitsJob
+                Write-Progress -Activity "Downloading Windows VM Agent" -Completed
+                Write-Output "Download completed successfully using BITS."
+            } else {
+                Write-Output "BITS transfer failed with state: $($bitsJob.JobState)"
+                throw "BITS transfer failed: $($bitsJob.ErrorDescription)"
+            }
+        } catch {
+            Write-Output "Error using BITS, falling back to WebClient: $_"
+            $useBITS = $false
+        }
+    }
+
+    if (-not $useBITS) {
+        # Use System.Net.WebClient as fallback
+        Write-Output "Using WebClient for download..."
+        $webClient = New-Object System.Net.WebClient
+
+        # Add event handler for download progress
+        $webClient.DownloadProgressChanged = {
+            $percent = $_.ProgressPercentage
+            if ($percent % 10 -eq 0) {  # Only show every 10%
+                Write-Progress -Activity "Downloading Windows VM Agent" -Status "$percent% Complete" -PercentComplete $percent
+            }
+        }
+
+        # Add event handler for download completion
+        $webClient.DownloadFileCompleted = {
+            Write-Progress -Activity "Downloading Windows VM Agent" -Completed
+            Write-Output "Download completed."
+        }
+
+        # Start the download
+        $webClient.DownloadFileAsync($agentZipUrl, $agentZip)
+
+        # Wait for download to complete
+        while ($webClient.IsBusy) {
+            Start-Sleep -Milliseconds 100
+        }
+    }
 
     Write-Output "Extracting Windows VM Agent files..."
 
@@ -246,7 +408,88 @@ if ($InstallAsService) {
     try {
         # Download NSSM
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $nssmUrl -OutFile $nssmZip
+
+        # Check if BITS module is available
+        $useBITS = $false
+        try {
+            # Check if BITS module is available
+            if (Get-Module -ListAvailable -Name BitsTransfer) {
+                $useBITS = $true
+                Write-Output "Using BITS for optimal NSSM download performance..."
+                Import-Module BitsTransfer
+            } else {
+                Write-Output "BITS module not available, falling back to WebClient for NSSM download..."
+            }
+        } catch {
+            Write-Output "Error checking for BITS module, falling back to WebClient for NSSM download: $_"
+        }
+
+        if ($useBITS) {
+            # Use BITS for fastest download with resume capability
+            try {
+                # Remove any existing BITS transfer with the same name
+                Get-BitsTransfer -Name "NSSMDownload" -ErrorAction SilentlyContinue | Remove-BitsTransfer
+
+                # Start the BITS transfer
+                Start-BitsTransfer -Source $nssmUrl -Destination $nssmZip -DisplayName "NSSM Download" -Description "Downloading NSSM" -Asynchronous -TransferType Download -Priority High
+
+                # Get the BITS transfer
+                $bitsJob = Get-BitsTransfer -Name "NSSMDownload"
+
+                # Wait for the download to complete with progress
+                while ($bitsJob.JobState -eq "Transferring" -or $bitsJob.JobState -eq "Connecting") {
+                    $percentComplete = 0
+                    if ($bitsJob.BytesTotal -gt 0) {
+                        $percentComplete = [int](($bitsJob.BytesTransferred * 100) / $bitsJob.BytesTotal)
+                    }
+
+                    Write-Progress -Activity "Downloading NSSM" -Status "$percentComplete% Complete" -PercentComplete $percentComplete
+                    Start-Sleep -Seconds 1
+                    $bitsJob = Get-BitsTransfer -Name "NSSMDownload"
+                }
+
+                # Complete the BITS transfer
+                if ($bitsJob.JobState -eq "Transferred") {
+                    Complete-BitsTransfer -BitsJob $bitsJob
+                    Write-Progress -Activity "Downloading NSSM" -Completed
+                    Write-Output "NSSM download completed successfully using BITS."
+                } else {
+                    Write-Output "BITS transfer failed with state: $($bitsJob.JobState)"
+                    throw "BITS transfer failed: $($bitsJob.ErrorDescription)"
+                }
+            } catch {
+                Write-Output "Error using BITS for NSSM download, falling back to WebClient: $_"
+                $useBITS = $false
+            }
+        }
+
+        if (-not $useBITS) {
+            # Use System.Net.WebClient as fallback
+            Write-Output "Using WebClient for NSSM download..."
+            $webClient = New-Object System.Net.WebClient
+
+            # Add event handler for download progress
+            $webClient.DownloadProgressChanged = {
+                $percent = $_.ProgressPercentage
+                if ($percent % 10 -eq 0) {  # Only show every 10%
+                    Write-Progress -Activity "Downloading NSSM" -Status "$percent% Complete" -PercentComplete $percent
+                }
+            }
+
+            # Add event handler for download completion
+            $webClient.DownloadFileCompleted = {
+                Write-Progress -Activity "Downloading NSSM" -Completed
+                Write-Output "NSSM download completed."
+            }
+
+            # Start the download
+            $webClient.DownloadFileAsync($nssmUrl, $nssmZip)
+
+            # Wait for download to complete
+            while ($webClient.IsBusy) {
+                Start-Sleep -Milliseconds 100
+            }
+        }
 
         # Extract NSSM
         if (-not (Test-Path $nssmDir)) {

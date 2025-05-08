@@ -101,30 +101,92 @@ def generate_powershell_command(vm_id: str, vm_name: str, api_key: str) -> str:
     logger.info(f"Server URL: {server_url}")
     logger.info(f"Download URL: {download_url}")
 
-    # Read the PowerShell script template
-    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates", "windows_vm_agent_install.ps1")
+    # Use a very simple command with explicit steps
+    # This avoids the "filename or extension is too long" error and the "Endpoint not found" error
+    command = f'''powershell -ExecutionPolicy Bypass -Command "
+# Set TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-    try:
-        with open(template_path, "r") as f:
-            template = f.read()
-    except Exception as e:
-        logger.error(f"Error reading PowerShell script template: {e}")
-        # Return a simple command if the template can't be read
-        return f'powershell -Command "Invoke-WebRequest -Uri {download_url} -OutFile windows_vm_agent.zip; Expand-Archive -Path windows_vm_agent.zip -DestinationPath C:\\CsBotAgent; Set-Content -Path C:\\CsBotAgent\\config.yaml -Value \\"General:\\n  VMIdentifier: \\"{vm_id}\\"\\n  APIKey: \\"{api_key}\\"\\n  ManagerBaseURL: \\"{server_url}\\"\\n\\""'
+# Define variables
+$downloadUrl = '{download_url}'
+$vmId = '{vm_id}'
+$apiKey = '{api_key}'
+$serverUrl = '{server_url}'
+$installDir = 'C:\\CsBotAgent'
+$agentZip = Join-Path $env:TEMP 'windows_vm_agent.zip'
+$extractDir = Join-Path $env:TEMP 'vm_agent_extract'
 
-    # Replace placeholders in the template
-    script = template.replace("{{vm_id}}", vm_id)
-    script = script.replace("{{vm_name}}", vm_name)
-    script = script.replace("{{api_key}}", api_key)
-    script = script.replace("{{server_url}}", server_url)
-    script = script.replace("{{download_url}}", download_url)
+Write-Host 'Downloading Windows VM Agent...'
+try {{
+    $webClient = New-Object System.Net.WebClient
+    $webClient.DownloadFile($downloadUrl, $agentZip)
+    Write-Host 'Download completed successfully.'
+}} catch {{
+    Write-Host 'Error downloading file: $_'
+    exit 1
+}}
 
-    # Encode the script as base64 for the PowerShell command
-    script_bytes = script.encode("utf-16le")
-    script_base64 = base64.b64encode(script_bytes).decode("ascii")
+Write-Host 'Extracting files...'
+try {{
+    # Create installation directory
+    if (-not (Test-Path $installDir)) {{
+        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    }}
 
-    # Generate the PowerShell command
-    command = f'powershell -ExecutionPolicy Bypass -EncodedCommand {script_base64}'
+    # Clean up extract directory if it exists
+    if (Test-Path $extractDir) {{
+        Remove-Item -Path $extractDir -Recurse -Force
+    }}
+    New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+
+    # Extract the ZIP file
+    Expand-Archive -Path $agentZip -DestinationPath $extractDir -Force
+
+    # Find the agent directory
+    $dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
+    if ($dirInfo) {{
+        $agentDir = Join-Path $dirInfo.FullName 'windows_vm_agent'
+        if (Test-Path $agentDir) {{
+            Write-Host 'Found windows_vm_agent directory in ZIP.'
+            Copy-Item -Path $agentDir\\* -Destination $installDir -Recurse -Force
+        }} else {{
+            Write-Host 'Using repository root directory.'
+            Copy-Item -Path $dirInfo.FullName\\* -Destination $installDir -Recurse -Force
+        }}
+    }} else {{
+        Write-Host 'Using extract directory root.'
+        Copy-Item -Path $extractDir\\* -Destination $installDir -Recurse -Force
+    }}
+
+    Write-Host 'Files extracted successfully.'
+}} catch {{
+    Write-Host 'Error extracting files: $_'
+    exit 1
+}}
+
+Write-Host 'Creating configuration file...'
+try {{
+    $configContent = @'
+General:
+  VMIdentifier: \"{0}\"
+  APIKey: \"{1}\"
+  ManagerBaseURL: \"{2}\"
+  ScriptsPath: \"{3}\\ActionScripts\"
+  LoggingEnabled: true
+  LogLevel: \"INFO\"
+'@ -f $vmId, $apiKey, $serverUrl, $installDir
+
+    Set-Content -Path (Join-Path $installDir 'config.yaml') -Value $configContent
+    Write-Host 'Configuration file created successfully.'
+}} catch {{
+    Write-Host 'Error creating configuration file: $_'
+    exit 1
+}}
+
+Write-Host 'Windows VM Agent installed successfully!' -ForegroundColor Green
+Write-Host 'Installation Directory: ' -NoNewline
+Write-Host $installDir -ForegroundColor Cyan
+"'''
 
     return command
 

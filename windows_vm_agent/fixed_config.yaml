@@ -1,0 +1,60 @@
+General:
+  VMIdentifier: "TEST_VM"  # VM ID from Proxmox or other virtualization platform
+  # API key generated from the Settings page in the web interface
+  # Go to Settings > API Keys > Create API Key > Select "windows_vm" as key type and enter the VM ID
+  APIKey: "f6Nk0DUz0D4nlo9mulQ4fI_VHJXnvcj4zuo3fOTAQPA"
+  # Base URL for the API - should be the root URL of the server, not including /api
+  # The agent will automatically try both with and without /api if needed
+  ManagerBaseURL: "https://cs2.drandex.org"
+  # Fixed path using forward slashes
+  ScriptsPath: "C:/CsBotAgent/action_scripts"
+  LoggingEnabled: true  # Enable logging to central storage
+  LogLevel: "INFO"  # Minimum level for logs sent to central storage (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+EventMonitors:
+  - Name: "AccountLoginMonitor"
+    Type: "LogFileTail"
+    LogFilePath: "C:/CsBotAgent/logs/bot.log"
+    CheckIntervalSeconds: 1.0
+    EventTriggers:
+      - EventName: "AccountLoginDetected"
+        # Regex to capture the account ID from a log line
+        Regex: 'User logged in:\s+(?P<account_id>\w+)'
+        # Action to perform when this regex matches
+        Action: "UpdateProxyForAccount"
+
+  - Name: "ErrorMonitor"
+    Type: "LogFileTail"
+    LogFilePath: "C:/CsBotAgent/logs/error.log"
+    CheckIntervalSeconds: 1.0
+    EventTriggers:
+      - EventName: "CriticalErrorDetected"
+        Regex: 'CRITICAL ERROR CODE: (?P<error_code>\d+)'
+        Action: "NotifyError"  # Example: Could trigger a script that POSTs to manager
+
+Actions:
+  - Name: "UpdateProxyForAccount"
+    # API endpoint to call to get data needed for the script
+    APIDataEndpoint: "/windows-vm-agent/account-config?vm_id={VMIdentifier}&account_id={account_id}"  # Placeholders filled from event
+    # Script to execute with data returned from API
+    Script: "Set-Proxy.ps1"
+    # Map API response fields to script parameters (case-sensitive)
+    ParameterMapping:
+      ProxyAddress: "proxy_server"  # Script param : API JSON key
+      BypassList: "proxy_bypass"
+
+  - Name: "NotifyError"
+    # This action might not need external data, just runs a script
+    Script: "Send-Notification.ps1"  # This script might contain API call logic itself
+    # Map event capture groups directly to script parameters
+    ParameterMapping:
+      ErrorCode: "error_code"  # Script param : Regex capture group name
+
+  - Name: "SendLog"
+    # API endpoint to call to send logs
+    APIDataEndpoint: "/windows-vm-agent/logs"  # No placeholders needed
+    # Script to execute with data returned from API
+    Script: "Send-Log.ps1"
+    # Map event capture groups directly to script parameters
+    ParameterMapping:
+      Message: "message"  # Script param : Log message

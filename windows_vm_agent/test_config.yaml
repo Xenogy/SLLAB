@@ -1,0 +1,8 @@
+General:
+  VMIdentifier: "TEST_VM"
+  APIKey: "f6Nk0DUz0D4nlo9mulQ4fI_VHJXnvcj4zuo3fOTAQPA"
+  ManagerBaseURL: "https://cs2.drandex.org"
+  # This is likely the problematic line with Windows path using backslashes
+  ScriptsPath: "C:\CsBotAgent\action_scripts"
+  LoggingEnabled: true
+  LogLevel: "INFO"

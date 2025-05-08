@@ -1,0 +1,59 @@
+WINDOWS VM AGENT CONFIG FIX GUIDE
+===========================
+
+The Windows VM Agent fails to initialize due to an issue with backslashes in file paths in the config.yaml file.
+This guide explains how to fix the issue manually.
+
+PROBLEM:
+--------
+In YAML files, backslashes (\) are used as escape characters. When Windows file paths with backslashes are used
+in a YAML file, they're interpreted as escape sequences. The error occurs because '\C' is not a valid escape sequence.
+
+SOLUTION:
+---------
+You have three options to fix this issue:
+
+1. RECOMMENDED: Replace backslashes with forward slashes
+   Example: Change "C:\CsBotAgent\action_scripts" to "C:/CsBotAgent/action_scripts"
+   
+   Windows accepts forward slashes in file paths in most contexts, and this is the most portable solution.
+
+2. Double the backslashes
+   Example: Change "C:\CsBotAgent\action_scripts" to "C:\\CsBotAgent\\action_scripts"
+   
+   This tells YAML to interpret the first backslash as an escape character for the second backslash.
+
+3. Use single quotes instead of double quotes
+   Example: Change "C:\CsBotAgent\action_scripts" to 'C:\CsBotAgent\action_scripts'
+   
+   Single quotes in YAML don't process escape sequences, so backslashes are treated literally.
+
+STEPS TO FIX MANUALLY:
+---------------------
+1. Open C:\CsBotAgent\config.yaml in a text editor (like Notepad, Notepad++, or VS Code)
+
+2. Find all Windows file paths that use backslashes (\) and replace them using one of the methods above
+   Common locations to check:
+   - ScriptsPath under General section
+   - LogFilePath under each EventMonitor
+
+3. Save the file and run the agent again using run_agent.bat
+
+EXAMPLE:
+--------
+Original (problematic):
+  ScriptsPath: "C:\CsBotAgent\action_scripts"
+  
+Fixed (using forward slashes):
+  ScriptsPath: "C:/CsBotAgent/action_scripts"
+
+AUTOMATED FIX:
+-------------
+If you prefer not to edit the file manually, you can use one of the provided scripts:
+
+1. fix_config.bat - Simple batch file that creates a fixed config
+2. fix_config.ps1 - PowerShell script that fixes the existing config (requires PowerShell-Yaml module)
+
+Simply run one of these scripts from the C:\CsBotAgent directory.
+
+If you encounter any issues, please contact support.
