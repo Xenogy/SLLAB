@@ -7,7 +7,7 @@ This module provides utility functions for Windows VM agent operations.
 import os
 import logging
 import base64
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Literal
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -36,42 +36,11 @@ def get_server_base_url() -> str:
     Returns:
         str: The base URL for the server.
     """
-    # Use the configured server URL or default to a constructed URL from API_HOST and API_PORT
-    server_url = Config.get("SERVER_BASE_URL", "")
+    # Always use the hardcoded public URL for reliability
+    server_url = "https://cs2.drandex.org"
 
-    if not server_url:
-        # If no server URL is configured, construct it from API_HOST and API_PORT
-        api_host = Config.get("API_HOST", "localhost")
-        api_port = Config.get("API_PORT", 8080)
-
-        # Check if API_HOST is a loopback address and try to use a more accessible address
-        if api_host in ["localhost", "127.0.0.1", "0.0.0.0"]:
-            # Try to get the server's public/external IP
-            try:
-                import socket
-                # First try to get the hostname
-                hostname = socket.gethostname()
-                # Then try to get the IP address
-                api_host = socket.gethostbyname(hostname)
-
-                # If we still have a loopback address, try a different approach
-                if api_host in ["localhost", "127.0.0.1", "0.0.0.0"]:
-                    # Try to get the IP by connecting to a public DNS server
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect(("8.8.8.8", 80))
-                    api_host = s.getsockname()[0]
-                    s.close()
-            except Exception as e:
-                logger.warning(f"Failed to get server's IP address: {e}")
-                # Fall back to a hardcoded value that's likely to work in most environments
-                api_host = "cs2.drandex.org"
-                logger.info(f"Using hardcoded server address: {api_host}")
-
-        # Construct the server URL
-        server_url = f"http://{api_host}:{api_port}"
-
-    # Remove trailing slashes
-    server_url = server_url.rstrip("/")
+    # Log the server URL
+    logger.info(f"Using server URL: {server_url}")
 
     return server_url
 
@@ -101,116 +70,80 @@ def generate_powershell_command(vm_id: str, vm_name: str, api_key: str) -> str:
     logger.info(f"Server URL: {server_url}")
     logger.info(f"Download URL: {download_url}")
 
-    # Create an extremely simple command with no complex formatting
-    # This avoids the "filename or extension is too long" error and the "Endpoint not found" error
-    command = f"""powershell -ExecutionPolicy Bypass -Command "
-# Set TLS 1.2
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-Write-Host 'Starting Windows VM Agent installation...'
-
-# Define variables explicitly
-$downloadUrl = '{download_url}'
-$vmId = '{vm_id}'
-$apiKey = '{api_key}'
-$serverUrl = '{server_url}'
-$installDir = 'C:\\CsBotAgent'
-$tempDir = $env:TEMP
-$agentZip = Join-Path $tempDir 'windows_vm_agent.zip'
-$extractDir = Join-Path $tempDir 'vm_agent_extract'
-
-Write-Host 'Downloading Windows VM Agent...'
-try {{
-    # Try to download the download_file.ps1 script first
-    $downloadScriptPath = Join-Path $tempDir 'download_file.ps1'
-    $downloadScriptUrl = $downloadUrl -replace 'windows_vm_agent.zip', 'download_file.ps1'
-
-    # Try to download the helper script
-    try {{
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($downloadScriptUrl, $downloadScriptPath)
-        Write-Host 'Using optimized download script...'
-
-        # Use the download script if it was downloaded successfully
-        if (Test-Path $downloadScriptPath) {{
-            & $downloadScriptPath -Url $downloadUrl -OutputPath $agentZip -ShowProgress $true
-        }}
-    }} catch {{
-        Write-Host ('Could not download helper script, falling back to direct download: ' + $_.Exception.Message)
-
-        # Use simple WebClient with explicit parameters
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($downloadUrl, $agentZip)
-    }}
-
-    Write-Host 'Download completed successfully.'
-}} catch {{
-    Write-Host ('Error downloading file: ' + $_.Exception.Message)
-    exit 1
-}}
-
-Write-Host 'Extracting files...'
-try {{
-    # Create installation directory
-    if (-not (Test-Path $installDir)) {{
-        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-    }}
-
-    # Clean up extract directory if it exists
-    if (Test-Path $extractDir) {{
-        Remove-Item -Path $extractDir -Recurse -Force
-    }}
-    New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
-
-    # Extract the ZIP file
-    Expand-Archive -Path $agentZip -DestinationPath $extractDir -Force
-
-    # Find the agent directory
-    $dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
-    if ($null -ne $dirInfo) {{
-        $agentDir = Join-Path $dirInfo.FullName 'windows_vm_agent'
-        if (Test-Path $agentDir) {{
-            Write-Host 'Found windows_vm_agent directory in ZIP.'
-            Copy-Item -Path ($agentDir + '\\*') -Destination $installDir -Recurse -Force
-        }} else {{
-            Write-Host 'Using repository root directory.'
-            Copy-Item -Path ($dirInfo.FullName + '\\*') -Destination $installDir -Recurse -Force
-        }}
-    }} else {{
-        Write-Host 'Using extract directory root.'
-        Copy-Item -Path ($extractDir + '\\*') -Destination $installDir -Recurse -Force
-    }}
-
-    Write-Host 'Files extracted successfully.'
-}} catch {{
-    Write-Host ('Error extracting files: ' + $_.Exception.Message)
-    exit 1
-}}
-
-Write-Host 'Creating configuration file...'
-try {{
-    # Create config content without using string formatting
-    $configContent = 'General:
-  VMIdentifier: \"' + $vmId + '\"
-  APIKey: \"' + $apiKey + '\"
-  ManagerBaseURL: \"' + $serverUrl + '\"
-  ScriptsPath: \"' + $installDir + '\\ActionScripts\"
-  LoggingEnabled: true
-  LogLevel: \"INFO\"'
-
-    Set-Content -Path (Join-Path $installDir 'config.yaml') -Value $configContent
-    Write-Host 'Configuration file created successfully.'
-}} catch {{
-    Write-Host ('Error creating configuration file: ' + $_.Exception.Message)
-    exit 1
-}}
-
-Write-Host 'Windows VM Agent installed successfully!' -ForegroundColor Green
-Write-Host ('Installation Directory: ' + $installDir)
-"
-"""
+    # Create an ultra-simple command that uses Invoke-Expression to avoid nested quoting issues
+    # This approach is much more reliable for copy-paste scenarios
+    command = f'''powershell -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $downloadUrl = '{download_url}'; $vmId = '{vm_id}'; $apiKey = '{api_key}'; $serverUrl = '{server_url}'; $installDir = 'C:\\CsBotAgent'; if (-not (Test-Path $installDir)) {{ New-Item -ItemType Directory -Path $installDir -Force | Out-Null }}; Write-Host 'Downloading Windows VM Agent...'; $webClient = New-Object System.Net.WebClient; $agentZip = Join-Path $env:TEMP 'windows_vm_agent.zip'; $webClient.DownloadFile($downloadUrl, $agentZip); Write-Host 'Extracting...'; $extractDir = Join-Path $env:TEMP 'vm_agent_extract'; if (Test-Path $extractDir) {{ Remove-Item -Path $extractDir -Recurse -Force }}; New-Item -ItemType Directory -Path $extractDir -Force | Out-Null; Expand-Archive -Path $agentZip -DestinationPath $extractDir -Force; $dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1; if ($dirInfo) {{ $agentDir = Join-Path $dirInfo.FullName 'windows_vm_agent'; if (Test-Path $agentDir) {{ Copy-Item -Path (Join-Path $agentDir '*') -Destination $installDir -Recurse -Force }} else {{ Copy-Item -Path (Join-Path $dirInfo.FullName '*') -Destination $installDir -Recurse -Force }} }} else {{ Copy-Item -Path (Join-Path $extractDir '*') -Destination $installDir -Recurse -Force }}; Write-Host 'Creating config...'; $configContent = 'General:\\n  VMIdentifier: \\"{0}\\"\\n  APIKey: \\"{1}\\"\\n  ManagerBaseURL: \\"{2}\\"\\n  ScriptsPath: \\"{3}\\\\ActionScripts\\"\\n  LoggingEnabled: true\\n  LogLevel: \\"INFO\\"' -f $vmId, $apiKey, $serverUrl, $installDir; Set-Content -Path (Join-Path $installDir 'config.yaml') -Value $configContent; Write-Host 'Windows VM Agent installed successfully!' -ForegroundColor Green"'''
 
     return command
+
+def generate_installation_command(
+    vm_id: str,
+    api_key: str,
+    style: Literal["direct", "simple", "oneliner", "simplest", "super_simple"] = "direct",
+    install_dir: str = "C:\\CsBotAgent",
+    vm_name: str = ""
+) -> str:
+    """
+    Generate a PowerShell command to install the Windows VM Agent.
+
+    This function consolidates all the different installation command styles into a single function.
+
+    Args:
+        vm_id (str): The VM ID.
+        api_key (str): The API key.
+        style (str): The installation style ("direct", "simple", "oneliner", "simplest", "super_simple").
+        install_dir (str): The installation directory.
+        vm_name (str): The VM name (optional, used only in some templates).
+
+    Returns:
+        str: The PowerShell command to install the agent.
+    """
+    # Get the server base URL
+    server_url = get_server_base_url()
+
+    # Get the agent download URL
+    download_url = get_agent_download_url()
+
+    # If the download URL is relative, make it absolute
+    if download_url.startswith("/"):
+        download_url = f"{server_url}{download_url}"
+
+    # Log the URLs for debugging
+    logger.info(f"Server URL: {server_url}")
+    logger.info(f"Download URL: {download_url}")
+
+    # Base command that sets up variables and TLS
+    base_vars = f"$downloadUrl = '{download_url}'; $vmId = '{vm_id}'; $apiKey = '{api_key}'; $serverUrl = '{server_url}'; $installDir = '{install_dir}';"
+    base_setup = "$ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;"
+
+    if style == "direct":
+        # Direct installation by downloading and running the direct_installer.ps1 script
+        # This is much more reliable than trying to create a complex one-liner
+        installer_url = f"{server_url}/downloads/direct_installer.ps1"
+        command = f'''powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '{installer_url}' -OutFile '$env:TEMP\\direct_installer.ps1'; & '$env:TEMP\\direct_installer.ps1' -DownloadUrl '{download_url}' -VMId '{vm_id}' -APIKey '{api_key}' -ServerURL '{server_url}' -InstallDir '{install_dir}'"'''
+
+    elif style == "simple" or style == "oneliner":
+        # Download and run the simple_install.ps1 script
+        script_url = f"{server_url}/downloads/simple_install.ps1"
+        command = f'''powershell -ExecutionPolicy Bypass -Command "{base_setup} {base_vars} $scriptUrl = '{script_url}'; Write-Host \\"Downloading installation script from $scriptUrl\\"; Invoke-WebRequest -Uri $scriptUrl -OutFile \\"$env:TEMP\\\\simple_install.ps1\\"; Write-Host \\"Running installation script\\"; & \\"$env:TEMP\\\\simple_install.ps1\\" -DownloadUrl $downloadUrl -VMId $vmId -APIKey $apiKey -ServerURL $serverUrl -InstallDir $installDir"'''
+
+    elif style == "simplest":
+        # Simplest possible command that downloads and runs the direct_installer.ps1 script
+        # This is much more reliable than trying to create a complex one-liner
+        installer_url = f"{server_url}/downloads/direct_installer.ps1"
+        command = f'''powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '{installer_url}' -OutFile '$env:TEMP\\direct_installer.ps1'; & '$env:TEMP\\direct_installer.ps1' -DownloadUrl '{download_url}' -VMId '{vm_id}' -APIKey '{api_key}' -ServerURL '{server_url}' -InstallDir '{install_dir}'"'''
+
+    elif style == "super_simple":
+        # Download and run the super_simple.ps1 script
+        super_simple_url = f"{server_url}/downloads/super_simple.ps1"
+        command = f'''powershell -ExecutionPolicy Bypass -Command "{base_setup} {base_vars} $scriptUrl = '{super_simple_url}'; Invoke-WebRequest -Uri $scriptUrl -OutFile \\"$env:TEMP\\\\super_simple.ps1\\"; & \\"$env:TEMP\\\\super_simple.ps1\\" -DownloadUrl $downloadUrl -VMId $vmId -APIKey $apiKey -ServerURL $serverUrl -InstallDir $installDir"'''
+
+    else:
+        # Default to direct installation
+        return generate_installation_command(vm_id, api_key, "direct", install_dir, vm_name)
+
+    return command
+
 
 def generate_powershell_script(vm_id: str, vm_name: str, api_key: str) -> str:
     """

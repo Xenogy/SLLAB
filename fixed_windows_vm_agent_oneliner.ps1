@@ -1,0 +1,9 @@
+powershell -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $downloadUrl = 'https://github.com/xenogy/sllab/archive/refs/heads/main.zip'; $vmId = '2'; $apiKey = 'PQaZWQD1ZBLRtyMr2bBx4OpXNMq69OXGEhrpkwFjciM'; $serverUrl = 'https://cs2.drandex.org'; $installDir = 'C:\CsBotAgent'; if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installDir -Force | Out-Null }; Write-Host 'Downloading Windows VM Agent...'; $webClient = New-Object System.Net.WebClient; $agentZip = Join-Path $env:TEMP 'windows_vm_agent.zip'; $webClient.DownloadFile($downloadUrl, $agentZip); Write-Host 'Extracting...'; $extractDir = Join-Path $env:TEMP 'vm_agent_extract'; if (Test-Path $extractDir) { Remove-Item -Path $extractDir -Recurse -Force }; New-Item -ItemType Directory -Path $extractDir -Force | Out-Null; Expand-Archive -Path $agentZip -DestinationPath $extractDir -Force; $dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1; if ($dirInfo) { $agentDir = Join-Path $dirInfo.FullName 'windows_vm_agent'; if (Test-Path $agentDir) { Copy-Item -Path (Join-Path $agentDir '*') -Destination $installDir -Recurse -Force } else { Copy-Item -Path (Join-Path $dirInfo.FullName '*') -Destination $installDir -Recurse -Force } } else { Copy-Item -Path (Join-Path $extractDir '*') -Destination $installDir -Recurse -Force }; Write-Host 'Creating config...'; $configContent = @'
+General:
+  VMIdentifier: \"{0}\"
+  APIKey: \"{1}\"
+  ManagerBaseURL: \"{2}\"
+  ScriptsPath: \"{3}\\ActionScripts\"
+  LoggingEnabled: true
+  LogLevel: \"INFO\"
+'@ -f $vmId, $apiKey, $serverUrl, $installDir; Set-Content -Path (Join-Path $installDir 'config.yaml') -Value $configContent; Write-Host 'Windows VM Agent installed successfully!' -ForegroundColor Green"

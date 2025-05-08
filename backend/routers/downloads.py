@@ -9,13 +9,14 @@ import os
 import shutil
 import time
 import zipfile
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Literal
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body, Response, Request, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 
 from config import Config
+from utils.agent_utils import generate_installation_command
 
 logger = logging.getLogger(__name__)
 
@@ -533,7 +534,8 @@ try {{
 }}
 catch {{
     $stopwatch.Stop()
-    Write-Host ('  Error: ' + $_.Exception.Message) -ForegroundColor Red
+    $errorMessage = $_.Exception.Message
+    Write-Host "  Error: $errorMessage" -ForegroundColor Red
 }}
 
 # Test WebClient
@@ -593,7 +595,8 @@ try {{
 }}
 catch {{
     $stopwatch.Stop()
-    Write-Host ('  Error: ' + $_.Exception.Message) -ForegroundColor Red
+    $errorMessage = $_.Exception.Message
+    Write-Host "  Error: $errorMessage" -ForegroundColor Red
 }}
 
 # Display comparison
@@ -667,116 +670,207 @@ async def download_simple_benchmark_script():
         }
     )
 
-@router.get("/direct_install_command")
+@router.get("/direct_install_command", deprecated=True)
 async def get_direct_install_command(request: Request, vm_id: str = "YOUR_VM_ID", api_key: str = "YOUR_API_KEY"):
     """
     Get a simple PowerShell command to directly install the Windows VM Agent.
 
     This endpoint returns a PowerShell command that can be copied and pasted into a PowerShell window.
 
+    Deprecated: Use /install-command?style=direct instead.
+
     Args:
         vm_id: The VM identifier.
         api_key: The API key for authentication.
     """
-    logger.info("Getting direct install command")
+    logger.info("Getting direct install command (deprecated)")
 
-    # Generate a simple command that directly installs the Windows VM Agent
-    server_url = f"{request.url.scheme}://{request.url.netloc}"
-    download_url = f"{server_url}/downloads/windows_vm_agent.zip"
-
-    # Create an extremely simple command with no complex formatting
-    command = f"""powershell -ExecutionPolicy Bypass -Command "
-# Set TLS 1.2
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-Write-Host 'Starting Windows VM Agent installation...'
-
-# Define variables explicitly
-$downloadUrl = '{download_url}'
-$vmId = '{vm_id}'
-$apiKey = '{api_key}'
-$serverUrl = '{server_url}'
-$installDir = 'C:\\CsBotAgent'
-$tempDir = $env:TEMP
-$agentZip = Join-Path $tempDir 'windows_vm_agent.zip'
-$extractDir = Join-Path $tempDir 'vm_agent_extract'
-
-Write-Host 'Downloading Windows VM Agent...'
-try {{
-    # Use simple WebClient with explicit parameters
-    $webClient = New-Object System.Net.WebClient
-    $webClient.DownloadFile($downloadUrl, $agentZip)
-    Write-Host 'Download completed successfully.'
-}} catch {{
-    Write-Host ('Error downloading file: ' + $_.Exception.Message)
-    exit 1
-}}
-
-Write-Host 'Extracting files...'
-try {{
-    # Create installation directory
-    if (-not (Test-Path $installDir)) {{
-        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-    }}
-
-    # Clean up extract directory if it exists
-    if (Test-Path $extractDir) {{
-        Remove-Item -Path $extractDir -Recurse -Force
-    }}
-    New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
-
-    # Extract the ZIP file
-    Expand-Archive -Path $agentZip -DestinationPath $extractDir -Force
-
-    # Find the agent directory
-    $dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
-    if ($null -ne $dirInfo) {{
-        $agentDir = Join-Path $dirInfo.FullName 'windows_vm_agent'
-        if (Test-Path $agentDir) {{
-            Write-Host 'Found windows_vm_agent directory in ZIP.'
-            Copy-Item -Path ($agentDir + '\\*') -Destination $installDir -Recurse -Force
-        }} else {{
-            Write-Host 'Using repository root directory.'
-            Copy-Item -Path ($dirInfo.FullName + '\\*') -Destination $installDir -Recurse -Force
-        }}
-    }} else {{
-        Write-Host 'Using extract directory root.'
-        Copy-Item -Path ($extractDir + '\\*') -Destination $installDir -Recurse -Force
-    }}
-
-    Write-Host 'Files extracted successfully.'
-}} catch {{
-    Write-Host ('Error extracting files: ' + $_.Exception.Message)
-    exit 1
-}}
-
-Write-Host 'Creating configuration file...'
-try {{
-    # Create config content without using string formatting
-    $configContent = 'General:
-  VMIdentifier: \"' + $vmId + '\"
-  APIKey: \"' + $apiKey + '\"
-  ManagerBaseURL: \"' + $serverUrl + '\"
-  ScriptsPath: \"' + $installDir + '\\ActionScripts\"
-  LoggingEnabled: true
-  LogLevel: \"INFO\"'
-
-    Set-Content -Path (Join-Path $installDir 'config.yaml') -Value $configContent
-    Write-Host 'Configuration file created successfully.'
-}} catch {{
-    Write-Host ('Error creating configuration file: ' + $_.Exception.Message)
-    exit 1
-}}
-
-Write-Host 'Windows VM Agent installed successfully!' -ForegroundColor Green
-Write-Host ('Installation Directory: ' + $installDir)
-"
-"""
+    # Use the consolidated function with the direct style
+    command = generate_installation_command(
+        vm_id=vm_id,
+        api_key=api_key,
+        style="direct"
+    )
 
     # Return the command as plain text
     return Response(
         content=command,
         media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Warning": "299 - This endpoint is deprecated. Use /install-command?style=direct instead."
+        }
+    )
+
+@router.get("/simple_install_command", deprecated=True)
+async def get_simple_install_command(request: Request, vm_id: str = "YOUR_VM_ID", api_key: str = "YOUR_API_KEY"):
+    """
+    Get a simple PowerShell command to install the Windows VM Agent using the simplified script.
+
+    This endpoint returns a PowerShell command that can be copied and pasted into a PowerShell window.
+
+    Deprecated: Use /install-command?style=simple instead.
+
+    Args:
+        vm_id: The VM identifier.
+        api_key: The API key for authentication.
+    """
+    logger.info("Getting simple install command (deprecated)")
+
+    # Use the consolidated function with the simple style
+    command = generate_installation_command(
+        vm_id=vm_id,
+        api_key=api_key,
+        style="simple"
+    )
+
+    # Return the command as plain text
+    return Response(
+        content=command,
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Warning": "299 - This endpoint is deprecated. Use /install-command?style=simple instead."
+        }
+    )
+
+@router.get("/oneliner", deprecated=True)
+async def get_oneliner_command(request: Request, vm_id: str = "YOUR_VM_ID", api_key: str = "YOUR_API_KEY"):
+    """
+    Get a one-line PowerShell command to install the Windows VM Agent.
+
+    This endpoint returns a single PowerShell command that can be copied and pasted into a PowerShell window.
+
+    Deprecated: Use /install-command?style=oneliner instead.
+
+    Args:
+        vm_id: The VM identifier.
+        api_key: The API key for authentication.
+    """
+    logger.info("Getting one-liner command (deprecated)")
+
+    # Use the consolidated function with the oneliner style
+    command = generate_installation_command(
+        vm_id=vm_id,
+        api_key=api_key,
+        style="oneliner"
+    )
+
+    # Return the command as plain text
+    return Response(
+        content=command,
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Warning": "299 - This endpoint is deprecated. Use /install-command?style=oneliner instead."
+        }
+    )
+
+@router.get("/simplest", deprecated=True)
+async def get_simplest_command(request: Request, vm_id: str = "YOUR_VM_ID", api_key: str = "YOUR_API_KEY"):
+    """
+    Get the simplest possible PowerShell command to install the Windows VM Agent.
+
+    This endpoint returns a single PowerShell command with minimal complexity.
+
+    Deprecated: Use /install-command?style=simplest instead.
+
+    Args:
+        vm_id: The VM identifier.
+        api_key: The API key for authentication.
+    """
+    logger.info("Getting simplest command (deprecated)")
+
+    # Use the consolidated function with the simplest style
+    command = generate_installation_command(
+        vm_id=vm_id,
+        api_key=api_key,
+        style="simplest"
+    )
+
+    # Return the command as plain text
+    return Response(
+        content=command,
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Warning": "299 - This endpoint is deprecated. Use /install-command?style=simplest instead."
+        }
+    )
+
+@router.get("/super_simple_command", deprecated=True)
+async def get_super_simple_command(request: Request, vm_id: str = "YOUR_VM_ID", api_key: str = "YOUR_API_KEY"):
+    """
+    Get a super-simple PowerShell command to install the Windows VM Agent.
+
+    This endpoint returns a PowerShell command that downloads and runs the super_simple.ps1 script.
+
+    Deprecated: Use /install-command?style=super_simple instead.
+
+    Args:
+        vm_id: The VM identifier.
+        api_key: The API key for authentication.
+    """
+    logger.info("Getting super simple command (deprecated)")
+
+    # Use the consolidated function with the super_simple style
+    command = generate_installation_command(
+        vm_id=vm_id,
+        api_key=api_key,
+        style="super_simple"
+    )
+
+    # Return the command as plain text
+    return Response(
+        content=command,
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Warning": "299 - This endpoint is deprecated. Use /install-command?style=super_simple instead."
+        }
+    )
+
+@router.get("/install", response_class=HTMLResponse)
+async def get_install_page():
+    """
+    Get the installation page for the Windows VM Agent.
+
+    This endpoint returns an HTML page with various installation options.
+    """
+    logger.info("Getting installation page")
+
+    # Path to the HTML file
+    html_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "install.html")
+
+    # Try multiple possible locations for the file
+    possible_paths = [
+        html_path,
+        "/backend/static/install.html",
+        "/home/axel/accountdb/backend/static/install.html",
+        os.path.abspath("backend/static/install.html")
+    ]
+
+    logger.info(f"Looking for install.html at multiple locations")
+    for path in possible_paths:
+        logger.info(f"Checking path: {path}, exists: {os.path.exists(path)}")
+        if os.path.exists(path):
+            html_path = path
+            break
+
+    logger.info(f"Using install.html at: {html_path}")
+
+    # Check if the file exists
+    if not os.path.exists(html_path):
+        logger.error(f"install.html not found: {html_path}")
+        raise HTTPException(status_code=404, detail="Installation page not found")
+
+    # Read the HTML file
+    with open(html_path, "r") as f:
+        html_content = f.read()
+
+    # Return the HTML content
+    return HTMLResponse(
+        content=html_content,
         headers={
             "Cache-Control": "no-cache"
         }
@@ -870,5 +964,185 @@ async def download_file_script():
         headers={
             "Cache-Control": "no-cache",
             "Content-Disposition": "attachment; filename=download_file.ps1"
+        }
+    )
+
+@router.get("/simple_install.ps1")
+async def download_simple_install_script():
+    """
+    Download the simple_install.ps1 script.
+
+    This is an extremely simplified script for installing the Windows VM Agent.
+    """
+    logger.info("Downloading simple_install.ps1 script")
+
+    # Path to the simple_install.ps1 script
+    script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                              "windows_vm_agent", "simple_install.ps1")
+
+    # Try multiple possible locations for the file
+    possible_paths = [
+        script_path,
+        "/windows_vm_agent/simple_install.ps1",
+        "/home/axel/accountdb/windows_vm_agent/simple_install.ps1",
+        os.path.abspath("windows_vm_agent/simple_install.ps1")
+    ]
+
+    logger.info(f"Looking for simple_install.ps1 script at multiple locations")
+    for path in possible_paths:
+        logger.info(f"Checking path: {path}, exists: {os.path.exists(path)}")
+        if os.path.exists(path):
+            script_path = path
+            break
+
+    logger.info(f"Using simple_install.ps1 script at: {script_path}")
+
+    # Check if the file exists
+    if not os.path.exists(script_path):
+        logger.error(f"simple_install.ps1 script not found: {script_path}")
+        raise HTTPException(status_code=404, detail="simple_install.ps1 script not found")
+
+    # Return the script as a file response
+    return FileResponse(
+        path=script_path,
+        filename="simple_install.ps1",
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Content-Disposition": "attachment; filename=simple_install.ps1"
+        }
+    )
+
+@router.get("/direct_installer.ps1")
+async def download_direct_installer_script():
+    """
+    Download the direct_installer.ps1 script.
+
+    This is a comprehensive script for installing the Windows VM Agent.
+    """
+    logger.info("Downloading direct_installer.ps1 script")
+
+    # Path to the direct_installer.ps1 script
+    script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                              "windows_vm_agent", "direct_installer.ps1")
+
+    # Try multiple possible locations for the file
+    possible_paths = [
+        script_path,
+        "/windows_vm_agent/direct_installer.ps1",
+        "/home/axel/accountdb/windows_vm_agent/direct_installer.ps1",
+        os.path.abspath("windows_vm_agent/direct_installer.ps1")
+    ]
+
+    logger.info(f"Looking for direct_installer.ps1 script at multiple locations")
+    for path in possible_paths:
+        logger.info(f"Checking path: {path}, exists: {os.path.exists(path)}")
+        if os.path.exists(path):
+            script_path = path
+            break
+
+    logger.info(f"Using direct_installer.ps1 script at: {script_path}")
+
+    # Check if the file exists
+    if not os.path.exists(script_path):
+        logger.error(f"direct_installer.ps1 script not found: {script_path}")
+        raise HTTPException(status_code=404, detail="direct_installer.ps1 script not found")
+
+    # Return the script as a file response
+    return FileResponse(
+        path=script_path,
+        filename="direct_installer.ps1",
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Content-Disposition": "attachment; filename=direct_installer.ps1"
+        }
+    )
+
+
+@router.get("/super_simple.ps1")
+async def download_super_simple_script():
+    """
+    Download the super_simple.ps1 script.
+
+    This is a super-simple one-line script for installing the Windows VM Agent.
+    """
+    logger.info("Downloading super_simple.ps1 script")
+
+    # Path to the super_simple.ps1 script
+    script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                              "windows_vm_agent", "super_simple.ps1")
+
+    # Try multiple possible locations for the file
+    possible_paths = [
+        script_path,
+        "/windows_vm_agent/super_simple.ps1",
+        "/home/axel/accountdb/windows_vm_agent/super_simple.ps1",
+        os.path.abspath("windows_vm_agent/super_simple.ps1")
+    ]
+
+    logger.info(f"Looking for super_simple.ps1 script at multiple locations")
+    for path in possible_paths:
+        logger.info(f"Checking path: {path}, exists: {os.path.exists(path)}")
+        if os.path.exists(path):
+            script_path = path
+            break
+
+    logger.info(f"Using super_simple.ps1 script at: {script_path}")
+
+    # Check if the file exists
+    if not os.path.exists(script_path):
+        logger.error(f"super_simple.ps1 script not found: {script_path}")
+        raise HTTPException(status_code=404, detail="super_simple.ps1 script not found")
+
+    # Return the script as a file response
+    return FileResponse(
+        path=script_path,
+        filename="super_simple.ps1",
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Content-Disposition": "attachment; filename=super_simple.ps1"
+        }
+    )
+
+
+@router.get("/install-command")
+async def get_installation_command(
+    vm_id: str = "YOUR_VM_ID",
+    api_key: str = "YOUR_API_KEY",
+    style: Literal["direct", "simple", "oneliner", "simplest", "super_simple"] = "direct",
+    install_dir: str = "C:\\CsBotAgent"
+):
+    """
+    Get a PowerShell command to install the Windows VM Agent.
+
+    This endpoint consolidates all the different installation command styles into a single endpoint.
+
+    Args:
+        vm_id: The VM identifier.
+        api_key: The API key for authentication.
+        style: The installation style ("direct", "simple", "oneliner", "simplest", "super_simple").
+        install_dir: The installation directory.
+
+    Returns:
+        A PowerShell command that can be copied and pasted into a PowerShell window.
+    """
+    logger.info(f"Getting installation command with style: {style}")
+
+    # Generate the installation command using the consolidated function
+    command = generate_installation_command(
+        vm_id=vm_id,
+        api_key=api_key,
+        style=style,
+        install_dir=install_dir
+    )
+
+    # Return the command as plain text
+    return Response(
+        content=command,
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache"
         }
     )

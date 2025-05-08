@@ -64,6 +64,9 @@ This directory contains comprehensive documentation for the AccountDB project, a
 - [Agent Configuration](../windows_vm_agent/README.md#configuration): Configuring the Windows VM agent
 - [Event Monitoring](../windows_vm_agent/README.md#event-monitoring): Monitoring events with the agent
 - [Action Scripts](../windows_vm_agent/README.md#creating-action-scripts): Creating action scripts for the agent
+- [Installation Scripts](../windows_vm_agent/docs/installation_scripts.md): Documentation for installation scripts
+- [Installation Endpoints](../windows_vm_agent/docs/installation_endpoints.md): Documentation for installation endpoints
+- [PowerShell Best Practices](../windows_vm_agent/docs/powershell_best_practices.md): Best practices for PowerShell scripts
 
 ## Developer Guides
 
@@ -87,3 +90,4 @@ This directory contains comprehensive documentation for the AccountDB project, a
 - [Frontend Issues](user_guides/troubleshooting_guide.md#frontend-issues): Troubleshooting frontend issues
 - [Proxmox Integration Issues](user_guides/troubleshooting_guide.md#proxmox-integration-issues): Troubleshooting Proxmox integration
 - [Windows VM Agent Issues](user_guides/troubleshooting_guide.md#windows-vm-agent-issues): Troubleshooting Windows VM agent
+- [PowerShell Script Issues](../windows_vm_agent/docs/powershell_best_practices.md): Troubleshooting PowerShell script issues

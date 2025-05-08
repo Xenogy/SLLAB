@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Windows VM Agent Installation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .copy-button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .installation-option {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .success {
+            color: green;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Windows VM Agent Installation</h1>
+
+    <div class="installation-option">
+        <h2>Option 1: Super-Simple Installation (Recommended)</h2>
+        <p>Copy and paste this single command into a PowerShell window:</p>
+        <pre id="super-simple-command"></pre>
+        <button class="copy-button" onclick="copyToClipboard('super-simple-command')">Copy to Clipboard</button>
+        <span class="success" id="super-simple-success">Copied!</span>
+    </div>
+
+    <div class="installation-option">
+        <h2>Option 2: Simplest Installation</h2>
+        <p>Copy and paste this single command into a PowerShell window:</p>
+        <pre id="simplest-command"></pre>
+        <button class="copy-button" onclick="copyToClipboard('simplest-command')">Copy to Clipboard</button>
+        <span class="success" id="simplest-success">Copied!</span>
+    </div>
+
+    <div class="installation-option">
+        <h2>Option 3: One-Line Script Installation</h2>
+        <p>This command downloads and runs the installation script:</p>
+        <pre id="oneliner-command"></pre>
+        <button class="copy-button" onclick="copyToClipboard('oneliner-command')">Copy to Clipboard</button>
+        <span class="success" id="oneliner-success">Copied!</span>
+    </div>
+
+    <div class="installation-option">
+        <h2>Option 3: Manual Installation</h2>
+        <p>Follow these steps to manually install the Windows VM Agent:</p>
+        <ol>
+            <li>Download the <a href="/downloads/windows_vm_agent.zip">Windows VM Agent ZIP file</a></li>
+            <li>Extract the ZIP file to <code>C:\CsBotAgent</code></li>
+            <li>Create a configuration file at <code>C:\CsBotAgent\config.yaml</code> with the following content:</li>
+        </ol>
+        <pre id="config-content"></pre>
+        <button class="copy-button" onclick="copyToClipboard('config-content')">Copy to Clipboard</button>
+        <span class="success" id="config-success">Copied!</span>
+    </div>
+
+    <div class="installation-option">
+        <h2>Option 4: Download Installation Script</h2>
+        <p>Download and run the installation script manually:</p>
+        <ol>
+            <li>Download the <a href="/downloads/simple_install.ps1">installation script</a></li>
+            <li>Open PowerShell and navigate to the directory where you downloaded the script</li>
+            <li>Run the following command:</li>
+        </ol>
+        <pre id="script-command"></pre>
+        <button class="copy-button" onclick="copyToClipboard('script-command')">Copy to Clipboard</button>
+        <span class="success" id="script-success">Copied!</span>
+    </div>
+
+    <h2>Parameters</h2>
+    <form id="params-form">
+        <div>
+            <label for="vm-id">VM ID:</label>
+            <input type="text" id="vm-id" value="YOUR_VM_ID">
+        </div>
+        <div>
+            <label for="api-key">API Key:</label>
+            <input type="text" id="api-key" value="YOUR_API_KEY">
+        </div>
+        <button type="button" onclick="updateCommands()">Update Commands</button>
+    </form>
+
+    <script>
+        // Function to copy text to clipboard
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+
+            navigator.clipboard.writeText(text).then(() => {
+                // Show success message
+                const successElement = document.getElementById(elementId + '-success');
+                successElement.style.display = 'inline';
+
+                // Hide success message after 2 seconds
+                setTimeout(() => {
+                    successElement.style.display = 'none';
+                }, 2000);
+            });
+        }
+
+        // Function to update commands with user-provided parameters
+        function updateCommands() {
+            const vmId = document.getElementById('vm-id').value;
+            const apiKey = document.getElementById('api-key').value;
+
+            // Fetch and update the super-simple command using the consolidated endpoint
+            fetch(`/downloads/install-command?vm_id=${encodeURIComponent(vmId)}&api_key=${encodeURIComponent(apiKey)}&style=super_simple`)
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('super-simple-command').textContent = data;
+                });
+
+            // Fetch and update the simplest command using the consolidated endpoint
+            fetch(`/downloads/install-command?vm_id=${encodeURIComponent(vmId)}&api_key=${encodeURIComponent(apiKey)}&style=simplest`)
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('simplest-command').textContent = data;
+                });
+
+            // Fetch and update the one-liner command using the consolidated endpoint
+            fetch(`/downloads/install-command?vm_id=${encodeURIComponent(vmId)}&api_key=${encodeURIComponent(apiKey)}&style=oneliner`)
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('oneliner-command').textContent = data;
+                });
+
+            // Update the config content
+            const serverUrl = window.location.origin;
+            const configContent = `General:
+  VMIdentifier: "${vmId}"
+  APIKey: "${apiKey}"
+  ManagerBaseURL: "${serverUrl}"
+  ScriptsPath: "C:\\CsBotAgent\\ActionScripts"
+  LoggingEnabled: true
+  LogLevel: "INFO"`;
+
+            document.getElementById('config-content').textContent = configContent;
+
+            // Update the script command
+            const downloadUrl = `${serverUrl}/downloads/windows_vm_agent.zip`;
+            const scriptCommand = `powershell -ExecutionPolicy Bypass -File simple_install.ps1 -DownloadUrl "${downloadUrl}" -VMId "${vmId}" -APIKey "${apiKey}" -ServerURL "${serverUrl}"`;
+
+            document.getElementById('script-command').textContent = scriptCommand;
+        }
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', updateCommands);
+    </script>
+</body>
+</html>

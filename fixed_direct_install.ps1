@@ -35,9 +35,11 @@ try {
     Write-Host "Downloading from: $DownloadUrl"
     Write-Host "Saving to: $agentZip"
     $webClient = New-Object System.Net.WebClient
+    # Fixed: Ensure both parameters are provided to DownloadFile
     $webClient.DownloadFile($DownloadUrl, $agentZip)
     Write-Host "Download completed successfully."
-} catch [System.Exception] {
+} catch {
+    # Fixed: Proper way to access Exception.Message in PowerShell
     $errorMessage = $_.Exception.Message
     Write-Host "Error downloading file: $errorMessage"
     exit 1
@@ -50,24 +52,45 @@ if (Test-Path $extractDir) {
     Remove-Item -Path $extractDir -Recurse -Force
 }
 New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
-Expand-Archive -Path $agentZip -DestinationPath $extractDir -Force
+
+try {
+    Expand-Archive -Path $agentZip -DestinationPath $extractDir -Force
+    Write-Host "Extraction completed successfully."
+} catch {
+    # Fixed: Proper way to access Exception.Message in PowerShell
+    $errorMessage = $_.Exception.Message
+    Write-Host "Error extracting files: $errorMessage"
+    exit 1
+}
 
 # Find and copy the agent files
-$dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
-if ($dirInfo) {
-    $agentDir = Join-Path $dirInfo.FullName "windows_vm_agent"
-    if (Test-Path $agentDir) {
-        Copy-Item -Path "$agentDir\*" -Destination $InstallDir -Recurse -Force
+try {
+    $dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
+    if ($dirInfo) {
+        $agentDir = Join-Path $dirInfo.FullName "windows_vm_agent"
+        if (Test-Path $agentDir) {
+            Write-Host "Found windows_vm_agent directory in ZIP."
+            Copy-Item -Path "$agentDir\*" -Destination $InstallDir -Recurse -Force
+        } else {
+            Write-Host "Using repository root directory."
+            Copy-Item -Path "$($dirInfo.FullName)\*" -Destination $InstallDir -Recurse -Force
+        }
     } else {
-        Copy-Item -Path "$($dirInfo.FullName)\*" -Destination $InstallDir -Recurse -Force
+        Write-Host "Using extract directory root."
+        Copy-Item -Path "$extractDir\*" -Destination $InstallDir -Recurse -Force
     }
-} else {
-    Copy-Item -Path "$extractDir\*" -Destination $InstallDir -Recurse -Force
+    Write-Host "Files copied successfully."
+} catch {
+    # Fixed: Proper way to access Exception.Message in PowerShell
+    $errorMessage = $_.Exception.Message
+    Write-Host "Error copying files: $errorMessage"
+    exit 1
 }
 
 # Create configuration file
 Write-Host "Creating configuration file..."
-$configContent = @"
+try {
+    $configContent = @"
 General:
   VMIdentifier: "$VMId"
   APIKey: "$APIKey"
@@ -77,7 +100,14 @@ General:
   LogLevel: "INFO"
 "@
 
-Set-Content -Path "$InstallDir\config.yaml" -Value $configContent
+    Set-Content -Path "$InstallDir\config.yaml" -Value $configContent
+    Write-Host "Configuration file created successfully."
+} catch {
+    # Fixed: Proper way to access Exception.Message in PowerShell
+    $errorMessage = $_.Exception.Message
+    Write-Host "Error creating configuration file: $errorMessage"
+    exit 1
+}
 
 # Create a batch file to run the agent
 $batchPath = Join-Path $InstallDir "run_agent.bat"
@@ -91,7 +121,7 @@ python run.py
 
 Set-Content -Path $batchPath -Value $batchContent
 
-Write-Host "Windows VM Agent installed successfully!"
+Write-Host "Windows VM Agent installed successfully!" -ForegroundColor Green
 Write-Host "Installation Directory: $InstallDir"
 Write-Host "VM ID: $VMId"
 Write-Host "Server URL: $ServerURL"

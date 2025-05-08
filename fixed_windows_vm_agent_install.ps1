@@ -1,21 +1,12 @@
-# Simple Windows VM Agent Installation Script
+# Windows VM Agent Installation Script
 # This script downloads and installs the Windows VM Agent
 
 param(
-    [Parameter(Mandatory=$true)]
-    [string]$DownloadUrl,
-
-    [Parameter(Mandatory=$true)]
-    [string]$VMId,
-
-    [Parameter(Mandatory=$true)]
-    [string]$APIKey,
-
-    [Parameter(Mandatory=$true)]
-    [string]$ServerURL,
-
-    [Parameter(Mandatory=$false)]
-    [string]$InstallDir = "C:\CsBotAgent"
+    [string]$VMId = "2",
+    [string]$APIKey = "PQaZWQD1ZBLRtyMr2bBx4OpXNMq69OXGEhrpkwFjciM",
+    [string]$ServerURL = "https://cs2.drandex.org",
+    [string]$InstallDir = "C:\CsBotAgent",
+    [string]$DownloadUrl = "https://github.com/xenogy/sllab/archive/refs/heads/main.zip"
 )
 
 # Set security protocol to TLS 1.2
@@ -23,7 +14,9 @@ param(
 
 # Create installation directory
 Write-Host "Creating installation directory: $InstallDir"
-New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+if (-not (Test-Path $InstallDir)) {
+    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+}
 
 # Download the Windows VM Agent
 Write-Host "Downloading Windows VM Agent from $DownloadUrl"
@@ -37,7 +30,7 @@ try {
     $webClient = New-Object System.Net.WebClient
     $webClient.DownloadFile($DownloadUrl, $agentZip)
     Write-Host "Download completed successfully."
-} catch [System.Exception] {
+} catch {
     $errorMessage = $_.Exception.Message
     Write-Host "Error downloading file: $errorMessage"
     exit 1
@@ -50,24 +43,43 @@ if (Test-Path $extractDir) {
     Remove-Item -Path $extractDir -Recurse -Force
 }
 New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
-Expand-Archive -Path $agentZip -DestinationPath $extractDir -Force
+
+try {
+    Expand-Archive -Path $agentZip -DestinationPath $extractDir -Force
+    Write-Host "Extraction completed successfully."
+} catch {
+    $errorMessage = $_.Exception.Message
+    Write-Host "Error extracting files: $errorMessage"
+    exit 1
+}
 
 # Find and copy the agent files
-$dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
-if ($dirInfo) {
-    $agentDir = Join-Path $dirInfo.FullName "windows_vm_agent"
-    if (Test-Path $agentDir) {
-        Copy-Item -Path "$agentDir\*" -Destination $InstallDir -Recurse -Force
+try {
+    $dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
+    if ($dirInfo) {
+        $agentDir = Join-Path $dirInfo.FullName "windows_vm_agent"
+        if (Test-Path $agentDir) {
+            Write-Host "Found windows_vm_agent directory in ZIP."
+            Copy-Item -Path "$agentDir\*" -Destination $InstallDir -Recurse -Force
+        } else {
+            Write-Host "Using repository root directory."
+            Copy-Item -Path "$($dirInfo.FullName)\*" -Destination $InstallDir -Recurse -Force
+        }
     } else {
-        Copy-Item -Path "$($dirInfo.FullName)\*" -Destination $InstallDir -Recurse -Force
+        Write-Host "Using extract directory root."
+        Copy-Item -Path "$extractDir\*" -Destination $InstallDir -Recurse -Force
     }
-} else {
-    Copy-Item -Path "$extractDir\*" -Destination $InstallDir -Recurse -Force
+    Write-Host "Files copied successfully."
+} catch {
+    $errorMessage = $_.Exception.Message
+    Write-Host "Error copying files: $errorMessage"
+    exit 1
 }
 
 # Create configuration file
 Write-Host "Creating configuration file..."
-$configContent = @"
+try {
+    $configContent = @"
 General:
   VMIdentifier: "$VMId"
   APIKey: "$APIKey"
@@ -77,7 +89,13 @@ General:
   LogLevel: "INFO"
 "@
 
-Set-Content -Path "$InstallDir\config.yaml" -Value $configContent
+    Set-Content -Path "$InstallDir\config.yaml" -Value $configContent
+    Write-Host "Configuration file created successfully."
+} catch {
+    $errorMessage = $_.Exception.Message
+    Write-Host "Error creating configuration file: $errorMessage"
+    exit 1
+}
 
 # Create a batch file to run the agent
 $batchPath = Join-Path $InstallDir "run_agent.bat"
@@ -91,7 +109,7 @@ python run.py
 
 Set-Content -Path $batchPath -Value $batchContent
 
-Write-Host "Windows VM Agent installed successfully!"
+Write-Host "Windows VM Agent installed successfully!" -ForegroundColor Green
 Write-Host "Installation Directory: $InstallDir"
 Write-Host "VM ID: $VMId"
 Write-Host "Server URL: $ServerURL"
