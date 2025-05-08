@@ -101,28 +101,51 @@ def generate_powershell_command(vm_id: str, vm_name: str, api_key: str) -> str:
     logger.info(f"Server URL: {server_url}")
     logger.info(f"Download URL: {download_url}")
 
-    # Use a very simple command with explicit steps
+    # Create an extremely simple command with no complex formatting
     # This avoids the "filename or extension is too long" error and the "Endpoint not found" error
-    command = f'''powershell -ExecutionPolicy Bypass -Command "
+    command = f"""powershell -ExecutionPolicy Bypass -Command "
 # Set TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# Define variables
+Write-Host 'Starting Windows VM Agent installation...'
+
+# Define variables explicitly
 $downloadUrl = '{download_url}'
 $vmId = '{vm_id}'
 $apiKey = '{api_key}'
 $serverUrl = '{server_url}'
 $installDir = 'C:\\CsBotAgent'
-$agentZip = Join-Path $env:TEMP 'windows_vm_agent.zip'
-$extractDir = Join-Path $env:TEMP 'vm_agent_extract'
+$tempDir = $env:TEMP
+$agentZip = Join-Path $tempDir 'windows_vm_agent.zip'
+$extractDir = Join-Path $tempDir 'vm_agent_extract'
 
 Write-Host 'Downloading Windows VM Agent...'
 try {{
-    $webClient = New-Object System.Net.WebClient
-    $webClient.DownloadFile($downloadUrl, $agentZip)
+    # Try to download the download_file.ps1 script first
+    $downloadScriptPath = Join-Path $tempDir 'download_file.ps1'
+    $downloadScriptUrl = $downloadUrl -replace 'windows_vm_agent.zip', 'download_file.ps1'
+
+    # Try to download the helper script
+    try {{
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($downloadScriptUrl, $downloadScriptPath)
+        Write-Host 'Using optimized download script...'
+
+        # Use the download script if it was downloaded successfully
+        if (Test-Path $downloadScriptPath) {{
+            & $downloadScriptPath -Url $downloadUrl -OutputPath $agentZip -ShowProgress $true
+        }}
+    }} catch {{
+        Write-Host ('Could not download helper script, falling back to direct download: ' + $_.Exception.Message)
+
+        # Use simple WebClient with explicit parameters
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($downloadUrl, $agentZip)
+    }}
+
     Write-Host 'Download completed successfully.'
 }} catch {{
-    Write-Host 'Error downloading file: $_'
+    Write-Host ('Error downloading file: ' + $_.Exception.Message)
     exit 1
 }}
 
@@ -144,49 +167,48 @@ try {{
 
     # Find the agent directory
     $dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
-    if ($dirInfo) {{
+    if ($null -ne $dirInfo) {{
         $agentDir = Join-Path $dirInfo.FullName 'windows_vm_agent'
         if (Test-Path $agentDir) {{
             Write-Host 'Found windows_vm_agent directory in ZIP.'
-            Copy-Item -Path $agentDir\\* -Destination $installDir -Recurse -Force
+            Copy-Item -Path ($agentDir + '\\*') -Destination $installDir -Recurse -Force
         }} else {{
             Write-Host 'Using repository root directory.'
-            Copy-Item -Path $dirInfo.FullName\\* -Destination $installDir -Recurse -Force
+            Copy-Item -Path ($dirInfo.FullName + '\\*') -Destination $installDir -Recurse -Force
         }}
     }} else {{
         Write-Host 'Using extract directory root.'
-        Copy-Item -Path $extractDir\\* -Destination $installDir -Recurse -Force
+        Copy-Item -Path ($extractDir + '\\*') -Destination $installDir -Recurse -Force
     }}
 
     Write-Host 'Files extracted successfully.'
 }} catch {{
-    Write-Host 'Error extracting files: $_'
+    Write-Host ('Error extracting files: ' + $_.Exception.Message)
     exit 1
 }}
 
 Write-Host 'Creating configuration file...'
 try {{
-    $configContent = @'
-General:
-  VMIdentifier: \"{0}\"
-  APIKey: \"{1}\"
-  ManagerBaseURL: \"{2}\"
-  ScriptsPath: \"{3}\\ActionScripts\"
+    # Create config content without using string formatting
+    $configContent = 'General:
+  VMIdentifier: \"' + $vmId + '\"
+  APIKey: \"' + $apiKey + '\"
+  ManagerBaseURL: \"' + $serverUrl + '\"
+  ScriptsPath: \"' + $installDir + '\\ActionScripts\"
   LoggingEnabled: true
-  LogLevel: \"INFO\"
-'@ -f $vmId, $apiKey, $serverUrl, $installDir
+  LogLevel: \"INFO\"'
 
     Set-Content -Path (Join-Path $installDir 'config.yaml') -Value $configContent
     Write-Host 'Configuration file created successfully.'
 }} catch {{
-    Write-Host 'Error creating configuration file: $_'
+    Write-Host ('Error creating configuration file: ' + $_.Exception.Message)
     exit 1
 }}
 
 Write-Host 'Windows VM Agent installed successfully!' -ForegroundColor Green
-Write-Host 'Installation Directory: ' -NoNewline
-Write-Host $installDir -ForegroundColor Cyan
-"'''
+Write-Host ('Installation Directory: ' + $installDir)
+"
+"""
 
     return command
 

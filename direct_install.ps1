@@ -4,16 +4,16 @@
 param(
     [Parameter(Mandatory=$true)]
     [string]$DownloadUrl,
-    
+
     [Parameter(Mandatory=$true)]
     [string]$VMId,
-    
+
     [Parameter(Mandatory=$true)]
     [string]$APIKey,
-    
+
     [Parameter(Mandatory=$true)]
     [string]$ServerURL,
-    
+
     [Parameter(Mandatory=$false)]
     [string]$InstallDir = "C:\CsBotAgent"
 )
@@ -29,15 +29,36 @@ New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 Write-Host "Downloading Windows VM Agent from $DownloadUrl"
 $agentZip = "$env:TEMP\windows_vm_agent.zip"
 
-# Check if BITS is available
-if (Get-Module -ListAvailable -Name BitsTransfer) {
-    Write-Host "Using BITS for download..."
-    Import-Module BitsTransfer
-    Start-BitsTransfer -Source $DownloadUrl -Destination $agentZip
-} else {
-    Write-Host "Using WebClient for download..."
+# Use the download_file.ps1 script if it exists, otherwise fall back to direct download
+$downloadScriptPath = Join-Path (Split-Path -Parent $agentZip) "download_file.ps1"
+$useDownloadScript = $false
+
+# Try to download the download_file.ps1 script first
+try {
+    Write-Host "Downloading the download_file.ps1 script..."
     $webClient = New-Object System.Net.WebClient
-    $webClient.DownloadFile($DownloadUrl, $agentZip)
+    $downloadScriptUrl = $DownloadUrl -replace "windows_vm_agent.zip", "download_file.ps1"
+    $webClient.DownloadFile($downloadScriptUrl, $downloadScriptPath)
+    $useDownloadScript = $true
+    Write-Host "Download script downloaded successfully."
+} catch {
+    Write-Host "Could not download the download_file.ps1 script, falling back to direct download: $_"
+}
+
+if ($useDownloadScript -and (Test-Path $downloadScriptPath)) {
+    Write-Host "Using download_file.ps1 script for efficient download..."
+    & $downloadScriptPath -Url $DownloadUrl -OutputPath $agentZip -ShowProgress $true
+} else {
+    # Fall back to the original download methods
+    if (Get-Module -ListAvailable -Name BitsTransfer) {
+        Write-Host "Using BITS for download..."
+        Import-Module BitsTransfer
+        Start-BitsTransfer -Source $DownloadUrl -Destination $agentZip
+    } else {
+        Write-Host "Using WebClient for download..."
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($DownloadUrl, $agentZip)
+    }
 }
 
 # Extract the ZIP file

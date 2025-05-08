@@ -458,10 +458,12 @@ async def get_benchmark_command(request: Request):
     server_url = f"{request.url.scheme}://{request.url.netloc}"
     download_url = f"{server_url}/downloads/windows_vm_agent.zip"
 
-    # Create a very simple benchmark command with explicit steps
-    command = f'''powershell -ExecutionPolicy Bypass -Command "
+    # Create a very simple benchmark command
+    command = f"""powershell -ExecutionPolicy Bypass -Command "
 # Set TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+Write-Host 'Starting download benchmark...'
 
 # Define variables
 $downloadUrl = '{download_url}'
@@ -470,35 +472,6 @@ $tempDir = Join-Path $env:TEMP 'download_benchmark'
 # Create temporary directory
 if (-not (Test-Path $tempDir)) {{
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-}}
-
-# Define helper functions
-function Format-FileSize {{
-    param([long]$Size)
-
-    if ($Size -ge 1GB) {{
-        return '{0:N2} GB' -f ($Size / 1GB)
-    }} elseif ($Size -ge 1MB) {{
-        return '{0:N2} MB' -f ($Size / 1MB)
-    }} elseif ($Size -ge 1KB) {{
-        return '{0:N2} KB' -f ($Size / 1KB)
-    }} else {{
-        return '$Size bytes'
-    }}
-}}
-
-function Format-Speed {{
-    param([double]$BytesPerSecond)
-
-    if ($BytesPerSecond -ge 1GB) {{
-        return '{0:N2} GB/s' -f ($BytesPerSecond / 1GB)
-    }} elseif ($BytesPerSecond -ge 1MB) {{
-        return '{0:N2} MB/s' -f ($BytesPerSecond / 1MB)
-    }} elseif ($BytesPerSecond -ge 1KB) {{
-        return '{0:N2} KB/s' -f ($BytesPerSecond / 1KB)
-    }} else {{
-        return '$BytesPerSecond bytes/s'
-    }}
 }}
 
 # Create results array
@@ -520,17 +493,42 @@ try {{
     $downloadTime = $stopwatch.Elapsed.TotalSeconds
     $speed = $fileSize / $downloadTime
 
-    $result = [PSCustomObject]@{{
-        Method = 'Invoke-WebRequest'
-        FileSize = $fileSize
-        FileSizeFormatted = Format-FileSize -Size $fileSize
-        DownloadTime = $downloadTime
-        DownloadTimeFormatted = '{0:N2} seconds' -f $downloadTime
-        Speed = $speed
-        SpeedFormatted = Format-Speed -BytesPerSecond $speed
+    # Format file size
+    $fileSizeFormatted = ''
+    if ($fileSize -ge 1GB) {{
+        $fileSizeFormatted = [string]::Format('{0:N2} GB', ($fileSize / 1GB))
+    }} elseif ($fileSize -ge 1MB) {{
+        $fileSizeFormatted = [string]::Format('{0:N2} MB', ($fileSize / 1MB))
+    }} elseif ($fileSize -ge 1KB) {{
+        $fileSizeFormatted = [string]::Format('{0:N2} KB', ($fileSize / 1KB))
+    }} else {{
+        $fileSizeFormatted = [string]::Format('{0} bytes', $fileSize)
     }}
 
-    Write-Host ('  Downloaded ' + $result.FileSizeFormatted + ' in ' + $result.DownloadTimeFormatted + ' at ' + $result.SpeedFormatted) -ForegroundColor Green
+    # Format speed
+    $speedFormatted = ''
+    if ($speed -ge 1GB) {{
+        $speedFormatted = [string]::Format('{0:N2} GB/s', ($speed / 1GB))
+    }} elseif ($speed -ge 1MB) {{
+        $speedFormatted = [string]::Format('{0:N2} MB/s', ($speed / 1MB))
+    }} elseif ($speed -ge 1KB) {{
+        $speedFormatted = [string]::Format('{0:N2} KB/s', ($speed / 1KB))
+    }} else {{
+        $speedFormatted = [string]::Format('{0} bytes/s', $speed)
+    }}
+
+    $downloadTimeFormatted = [string]::Format('{0:N2} seconds', $downloadTime)
+
+    $result = New-Object PSObject
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'Method' -Value 'Invoke-WebRequest'
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'FileSize' -Value $fileSize
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'FileSizeFormatted' -Value $fileSizeFormatted
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'DownloadTime' -Value $downloadTime
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'DownloadTimeFormatted' -Value $downloadTimeFormatted
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'Speed' -Value $speed
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'SpeedFormatted' -Value $speedFormatted
+
+    Write-Host ('  Downloaded ' + $fileSizeFormatted + ' in ' + $downloadTimeFormatted + ' at ' + $speedFormatted) -ForegroundColor Green
     $results += $result
 }}
 catch {{
@@ -555,66 +553,47 @@ try {{
     $downloadTime = $stopwatch.Elapsed.TotalSeconds
     $speed = $fileSize / $downloadTime
 
-    $result = [PSCustomObject]@{{
-        Method = 'System.Net.WebClient'
-        FileSize = $fileSize
-        FileSizeFormatted = Format-FileSize -Size $fileSize
-        DownloadTime = $downloadTime
-        DownloadTimeFormatted = '{0:N2} seconds' -f $downloadTime
-        Speed = $speed
-        SpeedFormatted = Format-Speed -BytesPerSecond $speed
+    # Format file size
+    $fileSizeFormatted = ''
+    if ($fileSize -ge 1GB) {{
+        $fileSizeFormatted = [string]::Format('{0:N2} GB', ($fileSize / 1GB))
+    }} elseif ($fileSize -ge 1MB) {{
+        $fileSizeFormatted = [string]::Format('{0:N2} MB', ($fileSize / 1MB))
+    }} elseif ($fileSize -ge 1KB) {{
+        $fileSizeFormatted = [string]::Format('{0:N2} KB', ($fileSize / 1KB))
+    }} else {{
+        $fileSizeFormatted = [string]::Format('{0} bytes', $fileSize)
     }}
 
-    Write-Host ('  Downloaded ' + $result.FileSizeFormatted + ' in ' + $result.DownloadTimeFormatted + ' at ' + $result.SpeedFormatted) -ForegroundColor Green
+    # Format speed
+    $speedFormatted = ''
+    if ($speed -ge 1GB) {{
+        $speedFormatted = [string]::Format('{0:N2} GB/s', ($speed / 1GB))
+    }} elseif ($speed -ge 1MB) {{
+        $speedFormatted = [string]::Format('{0:N2} MB/s', ($speed / 1MB))
+    }} elseif ($speed -ge 1KB) {{
+        $speedFormatted = [string]::Format('{0:N2} KB/s', ($speed / 1KB))
+    }} else {{
+        $speedFormatted = [string]::Format('{0} bytes/s', $speed)
+    }}
+
+    $downloadTimeFormatted = [string]::Format('{0:N2} seconds', $downloadTime)
+
+    $result = New-Object PSObject
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'Method' -Value 'System.Net.WebClient'
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'FileSize' -Value $fileSize
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'FileSizeFormatted' -Value $fileSizeFormatted
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'DownloadTime' -Value $downloadTime
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'DownloadTimeFormatted' -Value $downloadTimeFormatted
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'Speed' -Value $speed
+    Add-Member -InputObject $result -MemberType NoteProperty -Name 'SpeedFormatted' -Value $speedFormatted
+
+    Write-Host ('  Downloaded ' + $fileSizeFormatted + ' in ' + $downloadTimeFormatted + ' at ' + $speedFormatted) -ForegroundColor Green
     $results += $result
 }}
 catch {{
     $stopwatch.Stop()
     Write-Host ('  Error: ' + $_.Exception.Message) -ForegroundColor Red
-}}
-
-# Test BITS
-Write-Host 'Testing BITS...' -ForegroundColor Cyan
-$outputPath = Join-Path $tempDir 'bits.zip'
-if (Test-Path $outputPath) {{
-    Remove-Item -Path $outputPath -Force
-}}
-
-# Check if BITS module is available
-if (-not (Get-Module -ListAvailable -Name BitsTransfer)) {{
-    Write-Host '  BITS module not available. Skipping BITS benchmark.' -ForegroundColor Yellow
-}} else {{
-    Import-Module BitsTransfer
-
-    # Remove any existing BITS transfer with the same name
-    Get-BitsTransfer -Name 'BenchmarkDownload' -ErrorAction SilentlyContinue | Remove-BitsTransfer
-
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    try {{
-        Start-BitsTransfer -Source $downloadUrl -Destination $outputPath -DisplayName 'BenchmarkDownload' -Description 'Benchmark Download'
-        $stopwatch.Stop()
-
-        $fileSize = (Get-Item $outputPath).Length
-        $downloadTime = $stopwatch.Elapsed.TotalSeconds
-        $speed = $fileSize / $downloadTime
-
-        $result = [PSCustomObject]@{{
-            Method = 'BITS'
-            FileSize = $fileSize
-            FileSizeFormatted = Format-FileSize -Size $fileSize
-            DownloadTime = $downloadTime
-            DownloadTimeFormatted = '{0:N2} seconds' -f $downloadTime
-            Speed = $speed
-            SpeedFormatted = Format-Speed -BytesPerSecond $speed
-        }}
-
-        Write-Host ('  Downloaded ' + $result.FileSizeFormatted + ' in ' + $result.DownloadTimeFormatted + ' at ' + $result.SpeedFormatted) -ForegroundColor Green
-        $results += $result
-    }}
-    catch {{
-        $stopwatch.Stop()
-        Write-Host ('  Error: ' + $_.Exception.Message) -ForegroundColor Red
-    }}
 }}
 
 # Display comparison
@@ -624,20 +603,6 @@ Write-Host '=============================='
 
 $results | Sort-Object -Property DownloadTime | Format-Table -Property Method, FileSizeFormatted, DownloadTimeFormatted, SpeedFormatted
 
-# Identify the fastest method
-$fastestMethod = $results | Sort-Object -Property DownloadTime | Select-Object -First 1
-if ($fastestMethod) {{
-    Write-Host ''
-    Write-Host ('Fastest Method: ' + $fastestMethod.Method + ' with download time of ' + $fastestMethod.DownloadTimeFormatted) -ForegroundColor Cyan
-
-    # Calculate improvement over Invoke-WebRequest
-    $invokeWebRequestResult = $results | Where-Object {{ $_.Method -eq 'Invoke-WebRequest' }}
-    if ($invokeWebRequestResult) {{
-        $improvement = (1 - ($fastestMethod.DownloadTime / $invokeWebRequestResult.DownloadTime)) * 100
-        Write-Host ('Improvement over Invoke-WebRequest: ' + $improvement.ToString('N2') + '%') -ForegroundColor Cyan
-    }}
-}}
-
 # Clean up
 Write-Host ''
 Write-Host 'Cleaning up temporary files...' -ForegroundColor Gray
@@ -645,7 +610,8 @@ Remove-Item -Path (Join-Path $tempDir '*.zip') -Force -ErrorAction SilentlyConti
 
 Write-Host ''
 Write-Host 'Benchmark completed.' -ForegroundColor Green
-"'''
+"
+"""
 
     # Return the command as plain text
     return Response(
@@ -718,27 +684,31 @@ async def get_direct_install_command(request: Request, vm_id: str = "YOUR_VM_ID"
     server_url = f"{request.url.scheme}://{request.url.netloc}"
     download_url = f"{server_url}/downloads/windows_vm_agent.zip"
 
-    # Create a very simple command with explicit steps
-    command = f'''powershell -ExecutionPolicy Bypass -Command "
+    # Create an extremely simple command with no complex formatting
+    command = f"""powershell -ExecutionPolicy Bypass -Command "
 # Set TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# Define variables
+Write-Host 'Starting Windows VM Agent installation...'
+
+# Define variables explicitly
 $downloadUrl = '{download_url}'
 $vmId = '{vm_id}'
 $apiKey = '{api_key}'
 $serverUrl = '{server_url}'
 $installDir = 'C:\\CsBotAgent'
-$agentZip = Join-Path $env:TEMP 'windows_vm_agent.zip'
-$extractDir = Join-Path $env:TEMP 'vm_agent_extract'
+$tempDir = $env:TEMP
+$agentZip = Join-Path $tempDir 'windows_vm_agent.zip'
+$extractDir = Join-Path $tempDir 'vm_agent_extract'
 
 Write-Host 'Downloading Windows VM Agent...'
 try {{
+    # Use simple WebClient with explicit parameters
     $webClient = New-Object System.Net.WebClient
     $webClient.DownloadFile($downloadUrl, $agentZip)
     Write-Host 'Download completed successfully.'
 }} catch {{
-    Write-Host 'Error downloading file: $_'
+    Write-Host ('Error downloading file: ' + $_.Exception.Message)
     exit 1
 }}
 
@@ -760,49 +730,48 @@ try {{
 
     # Find the agent directory
     $dirInfo = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
-    if ($dirInfo) {{
+    if ($null -ne $dirInfo) {{
         $agentDir = Join-Path $dirInfo.FullName 'windows_vm_agent'
         if (Test-Path $agentDir) {{
             Write-Host 'Found windows_vm_agent directory in ZIP.'
-            Copy-Item -Path $agentDir\\* -Destination $installDir -Recurse -Force
+            Copy-Item -Path ($agentDir + '\\*') -Destination $installDir -Recurse -Force
         }} else {{
             Write-Host 'Using repository root directory.'
-            Copy-Item -Path $dirInfo.FullName\\* -Destination $installDir -Recurse -Force
+            Copy-Item -Path ($dirInfo.FullName + '\\*') -Destination $installDir -Recurse -Force
         }}
     }} else {{
         Write-Host 'Using extract directory root.'
-        Copy-Item -Path $extractDir\\* -Destination $installDir -Recurse -Force
+        Copy-Item -Path ($extractDir + '\\*') -Destination $installDir -Recurse -Force
     }}
 
     Write-Host 'Files extracted successfully.'
 }} catch {{
-    Write-Host 'Error extracting files: $_'
+    Write-Host ('Error extracting files: ' + $_.Exception.Message)
     exit 1
 }}
 
 Write-Host 'Creating configuration file...'
 try {{
-    $configContent = @'
-General:
-  VMIdentifier: \"{0}\"
-  APIKey: \"{1}\"
-  ManagerBaseURL: \"{2}\"
-  ScriptsPath: \"{3}\\ActionScripts\"
+    # Create config content without using string formatting
+    $configContent = 'General:
+  VMIdentifier: \"' + $vmId + '\"
+  APIKey: \"' + $apiKey + '\"
+  ManagerBaseURL: \"' + $serverUrl + '\"
+  ScriptsPath: \"' + $installDir + '\\ActionScripts\"
   LoggingEnabled: true
-  LogLevel: \"INFO\"
-'@ -f $vmId, $apiKey, $serverUrl, $installDir
+  LogLevel: \"INFO\"'
 
     Set-Content -Path (Join-Path $installDir 'config.yaml') -Value $configContent
     Write-Host 'Configuration file created successfully.'
 }} catch {{
-    Write-Host 'Error creating configuration file: $_'
+    Write-Host ('Error creating configuration file: ' + $_.Exception.Message)
     exit 1
 }}
 
 Write-Host 'Windows VM Agent installed successfully!' -ForegroundColor Green
-Write-Host 'Installation Directory: ' -NoNewline
-Write-Host $installDir -ForegroundColor Cyan
-"'''
+Write-Host ('Installation Directory: ' + $installDir)
+"
+"""
 
     # Return the command as plain text
     return Response(
@@ -855,5 +824,51 @@ async def download_direct_install_script():
         headers={
             "Cache-Control": "no-cache",
             "Content-Disposition": "attachment; filename=direct_install.ps1"
+        }
+    )
+
+@router.get("/download_file.ps1")
+async def download_file_script():
+    """
+    Download the download_file.ps1 script.
+
+    This script provides efficient file downloading with progress reporting.
+    """
+    logger.info("Downloading download_file.ps1 script")
+
+    # Path to the download_file.ps1 script
+    script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                              "windows_vm_agent", "download_file.ps1")
+
+    # Try multiple possible locations for the file
+    possible_paths = [
+        script_path,
+        "/windows_vm_agent/download_file.ps1",
+        "/home/axel/accountdb/windows_vm_agent/download_file.ps1",
+        os.path.abspath("windows_vm_agent/download_file.ps1")
+    ]
+
+    logger.info(f"Looking for download_file.ps1 script at multiple locations")
+    for path in possible_paths:
+        logger.info(f"Checking path: {path}, exists: {os.path.exists(path)}")
+        if os.path.exists(path):
+            script_path = path
+            break
+
+    logger.info(f"Using download_file.ps1 script at: {script_path}")
+
+    # Check if the file exists
+    if not os.path.exists(script_path):
+        logger.error(f"download_file.ps1 script not found: {script_path}")
+        raise HTTPException(status_code=404, detail="download_file.ps1 script not found")
+
+    # Return the script as a file response
+    return FileResponse(
+        path=script_path,
+        filename="download_file.ps1",
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Content-Disposition": "attachment; filename=download_file.ps1"
         }
     )
