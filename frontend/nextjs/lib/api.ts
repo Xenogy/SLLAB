@@ -878,7 +878,7 @@ export interface BanCheckTaskListResponse {
 
 // API endpoints for ban checker
 export const banCheckAPI = {
-  // Check Steam IDs for bans
+  // Check Steam IDs for bans (authenticated)
   checkSteamIDs: (steamIDs: string[], options: any = {}): Promise<BanCheckTask> => {
     const formData = new FormData();
     steamIDs.forEach(id => formData.append('steam_ids', id));
@@ -910,7 +910,35 @@ export const banCheckAPI = {
     });
   },
 
-  // Check CSV file for bans
+  // Check Steam IDs for bans (public, no authentication)
+  checkSteamIDsPublic: (steamIDs: string[], options: any = {}): Promise<BanCheckTask> => {
+    const formData = new FormData();
+    steamIDs.forEach(id => formData.append('steam_ids', id));
+
+    // Add proxy list if provided
+    if (options.proxy_list_str) formData.append('proxy_list_str', options.proxy_list_str);
+
+    // If auto-balancing is enabled, don't send the parameters
+    if (!options.use_auto_balancing) {
+      // Add optional parameters
+      if (options.logical_batch_size) formData.append('logical_batch_size', options.logical_batch_size.toString());
+      if (options.max_concurrent_batches) formData.append('max_concurrent_batches', options.max_concurrent_batches.toString());
+      if (options.max_workers_per_batch) formData.append('max_workers_per_batch', options.max_workers_per_batch.toString());
+      if (options.inter_request_submit_delay) formData.append('inter_request_submit_delay', options.inter_request_submit_delay.toString());
+      if (options.max_retries_per_url) formData.append('max_retries_per_url', options.max_retries_per_url.toString());
+      if (options.retry_delay_seconds) formData.append('retry_delay_seconds', options.retry_delay_seconds.toString());
+    }
+
+    return fetch(`${API_CONFIG.baseUrl}/ban-check/public/check/steamids`, {
+      method: "POST",
+      body: formData,
+    }).then(res => {
+      if (!res.ok) throw new Error("Failed to submit Steam IDs for ban check");
+      return res.json();
+    });
+  },
+
+  // Check CSV file for bans (authenticated)
   checkCSV: (file: File, steamIdColumn: string, options: any = {}): Promise<BanCheckTask> => {
     const formData = new FormData();
     formData.append('csv_file', file);
@@ -943,7 +971,36 @@ export const banCheckAPI = {
     });
   },
 
-  // Get list of tasks
+  // Check CSV file for bans (public, no authentication)
+  checkCSVPublic: (file: File, steamIdColumn: string, options: any = {}): Promise<BanCheckTask> => {
+    const formData = new FormData();
+    formData.append('csv_file', file);
+    formData.append('steam_id_column', steamIdColumn);
+
+    // Add proxy list if provided
+    if (options.proxy_list_str) formData.append('proxy_list_str', options.proxy_list_str);
+
+    // If auto-balancing is enabled, don't send the parameters
+    if (!options.use_auto_balancing) {
+      // Add optional parameters
+      if (options.logical_batch_size) formData.append('logical_batch_size', options.logical_batch_size.toString());
+      if (options.max_concurrent_batches) formData.append('max_concurrent_batches', options.max_concurrent_batches.toString());
+      if (options.max_workers_per_batch) formData.append('max_workers_per_batch', options.max_workers_per_batch.toString());
+      if (options.inter_request_submit_delay) formData.append('inter_request_submit_delay', options.inter_request_submit_delay.toString());
+      if (options.max_retries_per_url) formData.append('max_retries_per_url', options.max_retries_per_url.toString());
+      if (options.retry_delay_seconds) formData.append('retry_delay_seconds', options.retry_delay_seconds.toString());
+    }
+
+    return fetch(`${API_CONFIG.baseUrl}/ban-check/public/check/csv`, {
+      method: "POST",
+      body: formData,
+    }).then(res => {
+      if (!res.ok) throw new Error("Failed to submit CSV for ban check");
+      return res.json();
+    });
+  },
+
+  // Get list of tasks (authenticated)
   getTasks: (params: BanCheckTaskParams = {}): Promise<BanCheckTaskListResponse> =>
     fetchAPI<BanCheckTaskListResponse>(`/ban-check/tasks`, {
       params: {
@@ -952,9 +1009,15 @@ export const banCheckAPI = {
       },
     }),
 
-  // Get task by ID
+  // Get task by ID (authenticated)
   getTask: (taskId: string): Promise<BanCheckTask> =>
     fetchAPI<BanCheckTask>(`/ban-check/tasks/${taskId}`),
+
+  // Get task by ID (public, no authentication)
+  getTaskPublic: (taskId: string): Promise<BanCheckTask> =>
+    fetchAPI<BanCheckTask>(`/ban-check/public/tasks/${taskId}`, {
+      isPublic: true
+    }),
 };
 
 export const timeseriesAPI = {

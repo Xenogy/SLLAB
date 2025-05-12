@@ -51,6 +51,12 @@ ALTER TABLE public.proxmox_nodes FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.logs FORCE ROW LEVEL SECURITY;
 
+ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.api_keys FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_settings FORCE ROW LEVEL SECURITY;
+
 -- Drop existing policies if they exist
 DROP POLICY IF EXISTS accounts_user_policy ON public.accounts;
 DROP POLICY IF EXISTS accounts_admin_policy ON public.accounts;
@@ -64,6 +70,10 @@ DROP POLICY IF EXISTS proxmox_nodes_user_policy ON public.proxmox_nodes;
 DROP POLICY IF EXISTS proxmox_nodes_admin_policy ON public.proxmox_nodes;
 DROP POLICY IF EXISTS logs_user_policy ON public.logs;
 DROP POLICY IF EXISTS logs_admin_policy ON public.logs;
+DROP POLICY IF EXISTS api_keys_user_policy ON public.api_keys;
+DROP POLICY IF EXISTS api_keys_admin_policy ON public.api_keys;
+DROP POLICY IF EXISTS user_settings_user_policy ON public.user_settings;
+DROP POLICY IF EXISTS user_settings_admin_policy ON public.user_settings;
 
 -- Create RLS policies for accounts table
 CREATE POLICY accounts_admin_policy ON public.accounts
@@ -132,6 +142,28 @@ CREATE POLICY logs_user_policy ON public.logs
     USING (owner_id = current_setting('app.current_user_id', TRUE)::INTEGER OR
            current_setting('app.current_user_role', TRUE)::TEXT = 'admin');
 
+-- Create RLS policies for api_keys table
+CREATE POLICY api_keys_admin_policy ON public.api_keys
+    FOR ALL
+    TO PUBLIC
+    USING (current_setting('app.current_user_role', TRUE) = 'admin');
+
+CREATE POLICY api_keys_user_policy ON public.api_keys
+    FOR ALL
+    TO PUBLIC
+    USING (user_id = current_setting('app.current_user_id', TRUE)::INTEGER);
+
+-- Create RLS policies for user_settings table
+CREATE POLICY user_settings_admin_policy ON public.user_settings
+    FOR ALL
+    TO PUBLIC
+    USING (current_setting('app.current_user_role', TRUE) = 'admin');
+
+CREATE POLICY user_settings_user_policy ON public.user_settings
+    FOR ALL
+    TO PUBLIC
+    USING (user_id = current_setting('app.current_user_id', TRUE)::INTEGER);
+
 -- Create RLS views for accounts table
 CREATE OR REPLACE VIEW public.accounts_with_rls AS
 SELECT * FROM public.accounts
@@ -174,6 +206,20 @@ WHERE
     current_setting('app.current_user_role', TRUE) = 'admin'
     OR owner_id = current_setting('app.current_user_id', TRUE)::INTEGER;
 
+-- Create RLS views for api_keys table
+CREATE OR REPLACE VIEW public.api_keys_with_rls AS
+SELECT * FROM public.api_keys
+WHERE
+    current_setting('app.current_user_role', TRUE) = 'admin'
+    OR user_id = current_setting('app.current_user_id', TRUE)::INTEGER;
+
+-- Create RLS views for user_settings table
+CREATE OR REPLACE VIEW public.user_settings_with_rls AS
+SELECT * FROM public.user_settings
+WHERE
+    current_setting('app.current_user_role', TRUE) = 'admin'
+    OR user_id = current_setting('app.current_user_id', TRUE)::INTEGER;
+
 -- Grant permissions on views
 GRANT SELECT ON public.accounts_with_rls TO acc_user;
 GRANT SELECT ON public.hardware_with_rls TO acc_user;
@@ -181,6 +227,8 @@ GRANT SELECT ON public.cards_with_rls TO acc_user;
 GRANT SELECT ON public.vms_with_rls TO acc_user;
 GRANT SELECT ON public.proxmox_nodes_with_rls TO acc_user;
 GRANT SELECT ON public.logs_with_rls TO acc_user;
+GRANT SELECT ON public.api_keys_with_rls TO acc_user;
+GRANT SELECT ON public.user_settings_with_rls TO acc_user;
 
 -- Test RLS with different users
 DO $$

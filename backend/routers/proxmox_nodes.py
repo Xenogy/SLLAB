@@ -11,6 +11,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Body
 from pydantic import BaseModel, Field
+from psycopg2.extras import RealDictCursor
 from db import get_user_db_connection
 from db.connection import get_db_connection
 from db.repositories.proxmox_nodes import ProxmoxNodeRepository
@@ -436,6 +437,31 @@ async def node_heartbeat(
         from db.repositories.settings import SettingsRepository
         settings_repo = SettingsRepository(user_id=1, user_role="admin")  # Use admin role for verification
 
+        # Special case for the hardcoded API key during initialization
+        # This allows the node to connect before the api_keys table is created
+        if actual_api_key == 'v8akQodLgRLDqMyE9-2hDyzCFvJCsSD7a1Ry3PxNPtk' and node_id_int == 1:
+            # Check if the api_keys table exists
+            with get_db_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                    cursor.execute("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables
+                            WHERE table_schema = 'public'
+                            AND table_name = 'api_keys'
+                        )
+                    """)
+                    table_exists = cursor.fetchone()['exists']
+
+                    if not table_exists:
+                        logger.warning("api_keys table does not exist yet, but allowing hardcoded API key for node 1")
+                        # Update the node's status and last_seen
+                        success = proxmox_node_repo.update_node_status(node_id_int, "connected")
+
+                        if not success:
+                            raise HTTPException(status_code=500, detail="Failed to update node status")
+
+                        return {"message": "Heartbeat received (initialization mode)"}
+
         # Validate the API key
         api_key_data = settings_repo.validate_api_key(
             api_key=actual_api_key,
@@ -717,6 +743,26 @@ async def get_agent_proxmox_node(
 
         if not node:
             raise HTTPException(status_code=404, detail="Proxmox node not found")
+
+        # Special case for the hardcoded API key during initialization
+        # This allows the node to connect before the api_keys table is created
+        if api_key == 'v8akQodLgRLDqMyE9-2hDyzCFvJCsSD7a1Ry3PxNPtk' and node_id_int == 1:
+            # Check if the api_keys table exists
+            with get_db_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                    cursor.execute("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables
+                            WHERE table_schema = 'public'
+                            AND table_name = 'api_keys'
+                        )
+                    """)
+                    table_exists = cursor.fetchone()['exists']
+
+                    if not table_exists:
+                        logger.warning("api_keys table does not exist yet, but allowing hardcoded API key for node 1")
+                        # Continue with the request
+                        return node
 
         # Verify API key using the settings repository
         from db.repositories.settings import SettingsRepository

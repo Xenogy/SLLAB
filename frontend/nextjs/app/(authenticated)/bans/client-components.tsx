@@ -484,10 +484,17 @@ export function BansPageClient() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Steam Ban Checker</h1>
-        <Button variant="outline" onClick={fetchTasks} disabled={loading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center space-x-2">
+          <a href="/public-bans" target="_blank" rel="noopener noreferrer">
+            <Button variant="outline">
+              Public Version
+            </Button>
+          </a>
+          <Button variant="outline" onClick={fetchTasks} disabled={loading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">

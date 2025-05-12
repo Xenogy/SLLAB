@@ -13,7 +13,7 @@ export function middleware(request: NextRequest) {
   console.log(`Middleware processing: ${pathname}, token: ${token ? 'exists' : 'none'}`)
 
   // Define public paths that don't require authentication
-  const publicPaths = ["/auth/login", "/auth/register", "/auth/forgot-password"]
+  const publicPaths = ["/auth/login", "/auth/register", "/auth/forgot-password", "/public-bans"]
 
   // Check if the path is public
   const isPublicPath = publicPaths.some((path) => pathname.startsWith(path))

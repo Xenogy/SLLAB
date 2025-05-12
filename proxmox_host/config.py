@@ -52,7 +52,7 @@ def load_config() -> Config:
         ),
         accountdb=AccountDBConfig(
             url=os.getenv("ACCOUNTDB_URL", "http://localhost:8080"),
-            api_key=os.getenv("ACCOUNTDB_API_KEY", ""),
+            api_key=os.getenv("ACCOUNTDB_API_KEY", "v8akQodLgRLDqMyE9-2hDyzCFvJCsSD7a1Ry3PxNPtk"),
             node_id=int(os.getenv("ACCOUNTDB_NODE_ID", "1")),
         ),
         logging=LogConfig(

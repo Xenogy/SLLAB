@@ -14,6 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
 from typing import List, Dict, Any, Optional, Set, Tuple
+from datetime import datetime
 
 from db.repositories.ban_check import BanCheckRepository
 
@@ -25,14 +26,14 @@ class ScriptConfig:
     MAX_URLS_PER_LOGICAL_BATCH = 100
     MIN_WORKERS = 1
     MAX_WORKERS_CAP_TOTAL = 50
-    
+
     # Default parameters
     DEFAULT_MAX_CONCURRENT_BATCHES = 6
     DEFAULT_MAX_WORKERS_PER_BATCH = 3
     DEFAULT_INTER_REQUEST_SUBMIT_DELAY_S = 0.2
     DEFAULT_MAX_RETRIES_PER_URL = 3
     DEFAULT_RETRY_DELAY_SECONDS = 5
-    
+
     # Adaptive parameters based on account list size
     @staticmethod
     def get_optimal_params(num_accounts: int) -> Dict[str, Any]:
@@ -68,7 +69,7 @@ class ScriptConfig:
 # Proxy Manager
 class ProxyManager:
     """Thread-safe proxy manager that tracks proxy usage and prevents reuse."""
-    
+
     def __init__(self, proxies: List[str]):
         """Initialize the proxy manager with a list of proxies."""
         self.all_proxies = list(proxies) if proxies else []
@@ -76,32 +77,32 @@ class ProxyManager:
         self.in_use_proxies: Set[str] = set()
         self.lock = threading.Lock()
         self.proxy_usage_count: Dict[str, int] = {proxy: 0 for proxy in self.all_proxies}
-    
+
     def get_proxy(self) -> Optional[str]:
         """Get an available proxy. Returns None if no proxies are available."""
         with self.lock:
             if not self.available_proxies:
                 return None
-            
+
             # Get the least used proxy from available proxies
             if self.all_proxies:
                 proxy = min(self.available_proxies, key=lambda p: self.proxy_usage_count.get(p, 0))
             else:
                 proxy = self.available_proxies[0]
-            
+
             self.available_proxies.remove(proxy)
             self.in_use_proxies.add(proxy)
             self.proxy_usage_count[proxy] = self.proxy_usage_count.get(proxy, 0) + 1
-            
+
             return proxy
-    
+
     def release_proxy(self, proxy: str) -> None:
         """Release a proxy back to the available pool."""
         with self.lock:
             if proxy in self.in_use_proxies:
                 self.in_use_proxies.remove(proxy)
                 self.available_proxies.append(proxy)
-    
+
     def wait_for_proxy(self, timeout: float = 30.0, check_interval: float = 0.5) -> Optional[str]:
         """Wait for a proxy to become available, up to the specified timeout."""
         start_time = time.time()
@@ -111,7 +112,7 @@ class ProxyManager:
                 return proxy
             time.sleep(check_interval)
         return None
-    
+
     def get_status(self) -> Dict:
         """Get the current status of the proxy manager."""
         with self.lock:
@@ -156,7 +157,7 @@ def generate_urls_from_csv_content(csv_content: str, steam_id_column: str = "ste
     try:
         csv_file = io.StringIO(csv_content)
         reader = csv.DictReader(csv_file)
-        
+
         for row in reader:
             if steam_id_column in row and row[steam_id_column]:
                 steam_id = row[steam_id_column].strip()
@@ -181,7 +182,7 @@ def generate_urls_from_csv_content(csv_content: str, steam_id_column: str = "ste
                         urls.append(f"https://steamcommunity.com/id/{steam_id}")
     except Exception as e:
         print(f"Error processing CSV: {e}")
-    
+
     return urls
 
 # Ban Check Functions
@@ -192,16 +193,16 @@ def check_single_url_for_ban_info(url: str, proxy_to_use: Optional[str] = None,
     """Check a single URL for ban information."""
     log_prefix = f"Batch {batch_id_for_log} - URL {url_idx_for_log}/{total_in_batch_for_log}"
     print(f"{log_prefix} - Checking {url}")
-    
+
     last_error_status = "ERROR_UNKNOWN"
-    
+
     # Extract Steam ID from URL
     steam_id = None
     if "/profiles/" in url:
         steam_id = url.split("/profiles/")[1].split("/")[0]
     elif "/id/" in url:
         steam_id = url.split("/id/")[1].split("/")[0]
-    
+
     # Setup proxy
     proxies = None
     if proxy_to_use:
@@ -209,7 +210,7 @@ def check_single_url_for_ban_info(url: str, proxy_to_use: Optional[str] = None,
             "http": proxy_to_use,
             "https": proxy_to_use
         }
-    
+
     # Try to get the page with retries
     for attempt in range(max_retries + 1):
         try:
@@ -221,14 +222,14 @@ def check_single_url_for_ban_info(url: str, proxy_to_use: Optional[str] = None,
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
                 }
             )
-            
+
             if response.status_code != 200:
                 last_error_status = f"ERROR_HTTP_{response.status_code}"
                 print(f"{log_prefix} - HTTP error {response.status_code} (Attempt {attempt+1} of {max_retries+1})")
                 if attempt < max_retries:
                     time.sleep(retry_delay)
                 continue
-            
+
             # Parse the page
             soup = BeautifulSoup(response.content, 'html.parser')
             ban_info_span = soup.find('span', class_='profile_ban_info')
@@ -243,7 +244,7 @@ def check_single_url_for_ban_info(url: str, proxy_to_use: Optional[str] = None,
                 return "NOT_BANNED_PUBLIC"
             print(f"{log_prefix} - Unexpected page structure.")
             return "PROFILE_UNEXPECTED_STRUCTURE"
-        
+
         except requests.exceptions.Timeout:
             last_error_status = "ERROR_TIMEOUT"
             print(f"{log_prefix} - Timed out (Attempt {attempt+1} of {max_retries+1})")
@@ -256,10 +257,10 @@ def check_single_url_for_ban_info(url: str, proxy_to_use: Optional[str] = None,
         except Exception as e:
             last_error_status = f"ERROR: {str(e)}"
             print(f"{log_prefix} - Error: {e} (Attempt {attempt+1} of {max_retries+1})")
-        
+
         if attempt < max_retries:
             time.sleep(retry_delay)
-    
+
     return last_error_status
 
 def interpret_status(raw_status: str) -> Dict[str, str]:
@@ -303,14 +304,35 @@ def run_checks_background_task(
     proxies_list: List[str],
     params: Dict[str, Any],
     user_id: Optional[int] = None,
-    user_role: Optional[str] = None
+    user_role: Optional[str] = None,
+    is_public: bool = False,
+    public_tasks_dict: Optional[Dict[str, Dict[str, Any]]] = None
 ):
     """Run the ban checks in a background task."""
-    # Create repository
-    ban_check_repo = BanCheckRepository(user_id=user_id, user_role=user_role)
-    
+    # Handle public tasks (stored in memory) vs. authenticated tasks (stored in database)
+    if is_public and public_tasks_dict is not None:
+        # For public tasks, update the in-memory dictionary
+        public_tasks_dict[task_id].update({
+            "status": "PROCESSING",
+            "message": "Starting URL checks...",
+            "progress": 0,
+            "updated_at": datetime.now()
+        })
+        # Create a dummy update function for public tasks
+        def update_public_task(task_id: str, data: Dict[str, Any]):
+            if task_id in public_tasks_dict:
+                public_tasks_dict[task_id].update(data)
+                public_tasks_dict[task_id]["updated_at"] = datetime.now()
+
+        # Use the dummy update function instead of the repository
+        update_task_func = update_public_task
+    else:
+        # For authenticated tasks, use the repository
+        ban_check_repo = BanCheckRepository(user_id=user_id, user_role=user_role)
+        update_task_func = ban_check_repo.update_task
+
     # Update task status
-    ban_check_repo.update_task(
+    update_task_func(
         task_id=task_id,
         data={
             "status": "PROCESSING",
@@ -318,11 +340,11 @@ def run_checks_background_task(
             "progress": 0
         }
     )
-    
+
     # Get total number of URLs to process
     total_urls = len(generated_urls)
     if total_urls == 0:
-        ban_check_repo.update_task(
+        update_task_func(
             task_id=task_id,
             data={
                 "status": "FAILED",
@@ -331,17 +353,17 @@ def run_checks_background_task(
             }
         )
         return
-    
+
     # Initialize proxy manager
     proxy_manager = ProxyManager(proxies_list)
-    
+
     # Initialize results
     results = []
-    
+
     # Initialize progress tracking
     processed_urls = 0
     progress_lock = threading.Lock()
-    
+
     def update_progress():
         nonlocal processed_urls
         with progress_lock:
@@ -349,14 +371,14 @@ def run_checks_background_task(
             progress = (processed_urls / total_urls) * 100
             # Update task progress every 5% or when complete
             if progress % 5 < 1 or processed_urls == total_urls:
-                ban_check_repo.update_task(
+                update_task_func(
                     task_id=task_id,
                     data={
                         "progress": progress,
                         "message": f"Processed {processed_urls}/{total_urls} URLs ({progress:.1f}%)"
                     }
                 )
-    
+
     # Process URLs in batches
     try:
         # Get parameters
@@ -366,23 +388,23 @@ def run_checks_background_task(
         inter_request_submit_delay = params.get("inter_request_submit_delay", ScriptConfig.DEFAULT_INTER_REQUEST_SUBMIT_DELAY_S)
         max_retries_per_url = params.get("max_retries_per_url", ScriptConfig.DEFAULT_MAX_RETRIES_PER_URL)
         retry_delay_seconds = params.get("retry_delay_seconds", ScriptConfig.DEFAULT_RETRY_DELAY_SECONDS)
-        
+
         # Adjust batch size if needed
         logical_batch_size = max(ScriptConfig.MIN_URLS_PER_LOGICAL_BATCH, min(logical_batch_size, ScriptConfig.MAX_URLS_PER_LOGICAL_BATCH))
-        
+
         # Calculate number of batches
         num_batches = (total_urls + logical_batch_size - 1) // logical_batch_size
-        
+
         # Process batches
         with ThreadPoolExecutor(max_workers=max_concurrent_batches) as executor:
             batch_futures = []
-            
+
             for batch_idx in range(num_batches):
                 # Get URLs for this batch
                 start_idx = batch_idx * logical_batch_size
                 end_idx = min(start_idx + logical_batch_size, total_urls)
                 batch_urls = generated_urls[start_idx:end_idx]
-                
+
                 # Submit batch
                 future = executor.submit(
                     process_batch,
@@ -396,15 +418,15 @@ def run_checks_background_task(
                     update_progress
                 )
                 batch_futures.append(future)
-            
+
             # Collect results
             for future in as_completed(batch_futures):
                 batch_results = future.result()
                 results.extend(batch_results)
-        
+
         # Update task with results
         proxy_stats = proxy_manager.get_status()
-        ban_check_repo.update_task(
+        update_task_func(
             task_id=task_id,
             data={
                 "status": "COMPLETED",
@@ -414,10 +436,10 @@ def run_checks_background_task(
                 "proxy_stats": proxy_stats
             }
         )
-    
+
     except Exception as e:
         # Update task with error
-        ban_check_repo.update_task(
+        update_task_func(
             task_id=task_id,
             data={
                 "status": "FAILED",
@@ -439,20 +461,20 @@ def process_batch(
 ) -> List[Dict[str, Any]]:
     """Process a batch of URLs."""
     batch_results = []
-    
+
     # Get a proxy for this batch
     proxy_for_this_batch = proxy_manager.get_proxy()
-    
+
     try:
         # Adjust workers based on available URLs
         effective_workers_in_batch = min(max_workers_in_batch, len(urls_in_batch))
-        
+
         # Process URLs
         if effective_workers_in_batch == 1:
             for url_idx, url in enumerate(urls_in_batch):
                 if inter_req_submit_delay_in_batch > 0 and url_idx > 0:
                     time.sleep(inter_req_submit_delay_in_batch)
-                
+
                 raw_status = check_single_url_for_ban_info(
                     url,
                     proxy_for_this_batch,
@@ -462,17 +484,17 @@ def process_batch(
                     url_idx + 1,
                     len(urls_in_batch)
                 )
-                
+
                 # Extract Steam ID from URL
                 steam_id = None
                 if "/profiles/" in url:
                     steam_id = url.split("/profiles/")[1].split("/")[0]
                 elif "/id/" in url:
                     steam_id = url.split("/id/")[1].split("/")[0]
-                
+
                 # Interpret status
                 status_info = interpret_status(raw_status)
-                
+
                 # Add result
                 result = {
                     "steam_id": steam_id,
@@ -483,13 +505,13 @@ def process_batch(
                     "batch_id": batch_id
                 }
                 batch_results.append(result)
-                
+
                 # Update progress
                 update_progress_callback()
         else:
             with ThreadPoolExecutor(max_workers=effective_workers_in_batch) as batch_executor:
                 future_to_url_map_batch = {}
-                
+
                 for url_idx, url_in_b in enumerate(urls_in_batch):
                     future = batch_executor.submit(
                         check_single_url_for_ban_info,
@@ -502,26 +524,26 @@ def process_batch(
                         len(urls_in_batch)
                     )
                     future_to_url_map_batch[future] = url_in_b
-                    
+
                     if inter_req_submit_delay_in_batch > 0 and url_idx < len(urls_in_batch) - 1:
                         time.sleep(inter_req_submit_delay_in_batch)
-                
+
                 for future_b in as_completed(future_to_url_map_batch):
                     url = future_to_url_map_batch[future_b]
-                    
+
                     try:
                         raw_status = future_b.result()
-                        
+
                         # Extract Steam ID from URL
                         steam_id = None
                         if "/profiles/" in url:
                             steam_id = url.split("/profiles/")[1].split("/")[0]
                         elif "/id/" in url:
                             steam_id = url.split("/id/")[1].split("/")[0]
-                        
+
                         # Interpret status
                         status_info = interpret_status(raw_status)
-                        
+
                         # Add result
                         result = {
                             "steam_id": steam_id,
@@ -532,17 +554,17 @@ def process_batch(
                             "batch_id": batch_id
                         }
                         batch_results.append(result)
-                    
+
                     except Exception as exc_b:
                         print(f"Batch {batch_id} - Error processing URL {url}: {exc_b}")
-                        
+
                         # Extract Steam ID from URL
                         steam_id = None
                         if "/profiles/" in url:
                             steam_id = url.split("/profiles/")[1].split("/")[0]
                         elif "/id/" in url:
                             steam_id = url.split("/id/")[1].split("/")[0]
-                        
+
                         # Add error result
                         result = {
                             "steam_id": steam_id,
@@ -553,13 +575,13 @@ def process_batch(
                             "batch_id": batch_id
                         }
                         batch_results.append(result)
-                    
+
                     # Update progress
                     update_progress_callback()
-    
+
     finally:
         # Release proxy
         if proxy_for_this_batch:
             proxy_manager.release_proxy(proxy_for_this_batch)
-    
+
     return batch_results

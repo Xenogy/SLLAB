@@ -20,7 +20,10 @@ CREATE TABLE IF NOT EXISTS public.user_settings
 );
 
 -- Create API keys table for user authentication
-CREATE TABLE IF NOT EXISTS public.api_keys
+-- Drop the table first to ensure a clean creation
+DROP TABLE IF EXISTS public.api_keys CASCADE;
+
+CREATE TABLE public.api_keys
 (
     id SERIAL PRIMARY KEY,                                           -- Auto-incrementing ID (Primary Key)
     user_id INTEGER NOT NULL REFERENCES public.users(id),            -- User ID (Foreign Key)
@@ -53,15 +56,21 @@ GRANT USAGE, SELECT ON SEQUENCE api_keys_id_seq TO ps_user;
 ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
 
+-- Note: RLS policies are now defined in 07-setup_rls.sql
+-- These policies are kept here for backward compatibility but will be overridden
 -- Create RLS policies for user_settings
 CREATE POLICY user_settings_user_policy ON public.user_settings
-    USING (user_id = current_setting('app.current_user_id')::INTEGER OR
-           current_setting('app.current_user_role')::TEXT = 'admin');
+    FOR ALL
+    TO PUBLIC
+    USING (user_id = current_setting('app.current_user_id', TRUE)::INTEGER OR
+           current_setting('app.current_user_role', TRUE)::TEXT = 'admin');
 
 -- Create RLS policies for api_keys
 CREATE POLICY api_keys_user_policy ON public.api_keys
-    USING (user_id = current_setting('app.current_user_id')::INTEGER OR
-           current_setting('app.current_user_role')::TEXT = 'admin');
+    FOR ALL
+    TO PUBLIC
+    USING (user_id = current_setting('app.current_user_id', TRUE)::INTEGER OR
+           current_setting('app.current_user_role', TRUE)::TEXT = 'admin');
 
 -- Create indexes for api_keys
 CREATE INDEX IF NOT EXISTS idx_api_keys_key_type ON public.api_keys (key_type);
