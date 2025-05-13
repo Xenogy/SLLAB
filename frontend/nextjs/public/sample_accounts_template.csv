@@ -1,0 +1,2 @@
+id,user.username,user.password,email.address,email.password,vault.address,vault.password,metadata.createdAt,metadata.sessionStart,metadata.guard
+76561199123456789,testuser123,password12345,test1@example.com,emailpass123,vault1@example.com,vaultpass123,1620000000,1620000000,email

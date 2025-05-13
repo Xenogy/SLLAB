@@ -232,13 +232,26 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
     try {
       let response;
 
+      // Log file information for debugging
+      console.log(`Importing ${importType} file: ${file.name}, size: ${file.size}, type: ${file.type}`);
+
       // Use the new upload endpoints
       if (importType === "json") {
         setProgress(30)
         response = await accountsAPI.uploadJSON(file)
       } else {
         setProgress(30)
-        response = await accountsAPI.uploadCSV(file)
+        try {
+          response = await accountsAPI.uploadCSV(file)
+        } catch (err) {
+          console.error("CSV upload error:", err);
+          // Extract the detailed error message
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          setError(errorMessage);
+          setIsLoading(false);
+          setProgress(0);
+          return;
+        }
       }
 
       setProgress(100)
@@ -315,7 +328,15 @@ export function ImportAccountsModal({ isOpen, onClose, onSuccess }: ImportAccoun
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                CSV file should have headers using dot notation for nested fields (e.g., user.username, email.address, metadata.createdAt).
+                CSV file must have the following headers: id, user.username, user.password, email.address, email.password, vault.address, vault.password, metadata.createdAt, metadata.sessionStart, metadata.guard
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                <strong>Example format:</strong> id,user.username,user.password,email.address,email.password,vault.address,vault.password,metadata.createdAt,metadata.sessionStart,metadata.guard
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                <a href="/sample_accounts_template.csv" download className="text-blue-500 hover:underline">
+                  Download CSV template
+                </a>
               </p>
             </div>
           </TabsContent>

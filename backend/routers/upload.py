@@ -419,6 +419,9 @@ async def upload_csv_file(file: UploadFile = File(...), current_user = Depends(g
         )
 
     try:
+        # Log file information for debugging
+        logger.info(f"Processing CSV file: {file.filename}, Content-Type: {file.content_type}")
+
         # Read the file
         contents = await file.read()
 
@@ -433,6 +436,8 @@ async def upload_csv_file(file: UploadFile = File(...), current_user = Depends(g
         # Parse CSV
         try:
             csv_text = contents.decode('utf-8')
+            logger.debug(f"CSV content preview: {csv_text[:200]}...")
+
             csv_file = io.StringIO(csv_text)
             csv_reader = csv.DictReader(csv_file)
 
@@ -443,6 +448,8 @@ async def upload_csv_file(file: UploadFile = File(...), current_user = Depends(g
             ]
 
             headers = csv_reader.fieldnames
+            logger.info(f"CSV headers found: {headers}")
+
             if not headers:
                 logger.error("CSV file has no headers")
                 raise HTTPException(status_code=400, detail="CSV file has no headers")
@@ -476,12 +483,20 @@ async def upload_csv_file(file: UploadFile = File(...), current_user = Depends(g
 
             # Convert CSV row to account data structure
             try:
+                # Log the row data for debugging
+                logger.debug(f"Processing row {row_number}: {row}")
+
                 account_data = convert_csv_row_to_account_data(row)
+                logger.debug(f"Converted account data: {account_data}")
 
                 # Validate account data
                 validation_result = validate_account_data(account_data)
                 if not validation_result.valid:
                     logger.warning(f"Invalid account data in row {row_number}: {validation_result.errors}")
+                    # Log more detailed validation errors
+                    for error in validation_result.errors:
+                        logger.warning(f"Validation error in field {error['field']}: {error['message']}")
+
                     failed_accounts.append(
                         AccountValidationError(
                             account_id=account_data.get("id"),

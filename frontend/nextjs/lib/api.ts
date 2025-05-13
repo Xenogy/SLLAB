@@ -318,14 +318,42 @@ export const accountsAPI = {
     formData.append('file', file);
     const token = getAuthToken();
 
+    console.log(`Uploading CSV file: ${file.name}, size: ${file.size}, type: ${file.type}`);
+
     return fetch(`${API_CONFIG.baseUrl}/upload/csv?token=${token}`, {
       method: "POST",
       body: formData,
       headers: {
         Authorization: `Bearer ${token}`,
       },
-    }).then(res => {
-      if (!res.ok) throw new Error("Failed to upload CSV file");
+    }).then(async res => {
+      if (!res.ok) {
+        // Try to get detailed error information
+        const errorText = await res.text();
+        let errorDetail = `Failed to upload CSV file: ${res.status}`;
+
+        try {
+          // Try to parse as JSON
+          const errorData = JSON.parse(errorText);
+
+          // Extract the detail message
+          if (errorData.detail) {
+            console.error("CSV upload error detail:", errorData.detail);
+            errorDetail = `CSV upload failed: ${errorData.detail}`;
+          } else {
+            console.error("CSV upload error data:", errorData);
+            errorDetail = `CSV upload failed: ${JSON.stringify(errorData)}`;
+          }
+        } catch (e) {
+          // If not valid JSON, use the raw text
+          console.error("CSV upload error (not JSON):", errorText);
+          if (errorText) {
+            errorDetail = `CSV upload failed: ${errorText}`;
+          }
+        }
+
+        throw new Error(errorDetail);
+      }
       return res.json();
     });
   },
